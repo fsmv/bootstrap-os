@@ -16,18 +16,27 @@
 ; just going to assume all modern hardware supports color modes.
 mov ax, 0x0003
 int 0x10
-; Color byte is: blink/bg-intensity,bg-r,bg-g,bg-b ; fg-intensity/font,fg-r,fg-g,fg-b
-;
-; There's a register to set to turn on bg-intensity instead of blink but I
-; couldn't get it right. Same with fg-intensity intead of font selection. Look
-; for IBM VGA documentation (which is what everything is compatible with now).
+
+; Make the 8th bit of the colors bg-intensity instead of blink
+mov ax, 0x1003
+mov bl, 0
+int 0x10
+
+; Make the 4th bit of the colors fg-intensity instead of font selection
+; Use block 0 for the font
+; Apparently this is the default in VGA so maybe we don't need it
+mov ax, 0x1103
+mov bl, 0
+int 0x10
+
+; Color byte is: bg-intensity,bg-r,bg-g,bg-b ; fg-intensity,fg-r,fg-g,fg-b
 
 ; Print the starting greeting
 mov ax, 0x1301 ; Write String, move cursor mode in al
 mov bp, greeting ; String pointer in es:bp (es is at code start from bootsect-header.asm)
 mov cx, greeting_len ; Streng length
 xor dx, dx ; Zero cursor position
-mov bx, 0x0070 ; Zero page number, and colors (white backgound, black text)
+mov bx, 0x0080 ; Zero page number, and colors (grey backgound, black text)
 int 0x10
 
 ; --- Global register variables ---
