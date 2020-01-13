@@ -8,6 +8,11 @@
 ; See Figure 4-3 of the 1987 BIOS manual. (page 195)
 %define EOT 0x2004 ; Ctrl+D
 
+%define MAIN_COLOR 0x17
+%define BORDER_COLOR 0x91
+%define MAIN_TOP_LEFT 0x0110 ; row = 1,  col = 16
+%define MAIN_BOTTOM_RIGHT 0x173F ; row = 23, col = 79-16
+
 ; Set video mode, 16 color 80x25 chars
 ;
 ; The IBM BIOS manual describes a long procedure for determining which video
@@ -31,23 +36,49 @@ int 0x10
 
 ; Color byte is: bg-intensity,bg-r,bg-g,bg-b ; fg-intensity,fg-r,fg-g,fg-b
 
+; Set cursor shape to an underline
+mov ax, 0x0100
+mov cx, 0x0607
+int 0x10
+
+; Set the border color (by clearing the whole screen)
+mov ax, 0x0600
+xor cx, cx     ; row = 0,  col = 0
+mov dx, 0x184F ; row = 24, col = 79
+mov bh, BORDER_COLOR
+int 0x10
+
+; Set the background color (by clearing just the middle)
+mov ax, 0x0600
+mov cx, MAIN_TOP_LEFT
+mov dx, MAIN_BOTTOM_RIGHT
+mov bh, MAIN_COLOR
+int 0x10
+
 ; Print the starting greeting
 mov ax, 0x1301 ; Write String, move cursor mode in al
 mov bp, greeting ; String pointer in es:bp (es is at code start from bootsect-header.asm)
 mov cx, greeting_len ; Streng length
-xor dx, dx ; Zero cursor position
-mov bx, 0x0080 ; Zero page number, and colors (grey backgound, black text)
+mov dx, 0x0010 ; row = 0, col = 16
+mov bx, BORDER_COLOR ; bh = 0 (page number); bl = color
+int 0x10
+
+; Set cursor position to the start
+mov ax, 0x0200
+mov dx, 0x0110 ; row = 0, col = 16
+xor bh, bh ; page 0
 int 0x10
 
 ; --- Global register variables ---
 ;
+; dx      - cursor position (set above)
 ; [es:di] - the code the user types
 ; cl      - storage for one byte while the user types it out (2 chars per byte)
 ; ch      - non-zero iff the first nibble is written (the nibble could be zero)
 mov ax, USER_CODE_LOC
 mov es, ax
-xor cx, cx
 xor di, di
+xor cx, cx
 
 ; Note: all of the jumps loop back here except for run_code
 typing_loop:
@@ -93,13 +124,16 @@ save_and_print_nibble:
     test ch, ch ; Check the sentinel value in ch
     jnz save_and_print_second_nibble
 
+; save_and_print_first_nibble:
     shl cl, 4 ; Shift the first nibble to the high half
     mov ch, 0xFF ; Signal that we have seen the first nibble
 
     ; Print the first nibble (in al)
     mov ah, 0x0E ; Write teletype character
-    mov bx, 0x000F ; Page number and color
+    xor bx, bx
     int 0x10
+    inc dl ; Update the cursor location
+    ; Note: the first nibble never causes a new line
 
     jmp typing_loop
 
@@ -112,14 +146,47 @@ save_and_print_second_nibble:
 
     ; Print the second nibble (in al)
     mov ah, 0x0E ; Write teletype character
-    mov bx, 0x000F ; Page number and color
+    xor bx, bx
     int 0x10
 
-    ; Print a space between each byte
-    mov al, ' '
-    mov ah, 0x0E ; Write teletype character
-    mov bx, 0x000F ; Page number and color
+    cmp dl, 0x26 ; The column of the last char of the 8th byte
+    je extra_space
+
+    cmp dl, 0x3F ; The last column of the row
+    je new_line
+
+    ; Normal case, the char printed plus 1 space
+    add dl, 2
+    jmp set_cursor
+
+extra_space: ; Put two spaces in the middle
+    add dl, 3
+    jmp set_cursor
+
+new_line:
+    inc dh ; Next row
+    mov dl, 0x10 ; Beginning column
+
+    cmp dh, 24 ; if we're at the bottom
+    jne set_cursor
+    ; if we're at the bottom scroll
+    push cx
+    push dx
+
+    mov ax, 0x0601 ; scroll up one line
+    mov cx, MAIN_TOP_LEFT
+    mov dx, MAIN_BOTTOM_RIGHT
+    mov bh, MAIN_COLOR
     int 0x10
+
+    pop dx
+    pop cx
+
+    dec dh ; Back up one since we scrolled
+set_cursor:
+    mov ah, 0x02
+    xor bh, bh
+    int 0x10 ; dx is the cursor position
 
     jmp typing_loop
 
