@@ -2,7 +2,11 @@
 ; Copyright (c) 2020 Andrew Kallmeyer <ask@ask.systems>
 %include "util/bootsect-header.asm"
 
-%define USER_CODE_LOC 0x500
+%define SECTOR_SIZE 0x200
+
+; Segment register value. Actual location is 0x00500
+%define USER_CODE_LOC 0x0050
+%define USER_CODE_MAX 0x7700 ; 0x7C00 (boot sector loc) - 0x0500
 
 ; Values in ax after the keyboard read BIOS call
 ; See Figure 4-3 of the 1987 BIOS manual. (page 195)
@@ -10,8 +14,15 @@
 
 %define MAIN_COLOR 0x17
 %define BORDER_COLOR 0x91
-%define MAIN_TOP_LEFT 0x0110 ; row = 1,  col = 16
-%define MAIN_BOTTOM_RIGHT 0x173F ; row = 23, col = 79-16
+%define MAIN_TOP_LEFT 0x0210 ; row = 2,  col = 16
+%define MAIN_BOTTOM_RIGHT 0x163F ; row = 22, col = 79-16
+%define LINE_NUM_TOP_LEFT 0x020B ; row = 2,  col = 11
+%define LINE_NUM_BOTTOM_RIGHT 0x160F ; row = 22, col = 15
+%define END_ROW 0x17
+%define START_COL 0x10
+%define LINE_NUM_COL 0x0B
+
+push dx ; save the boot disk number (dl)
 
 ; Set video mode, 16 color 80x25 chars
 ;
@@ -49,11 +60,86 @@ mov bh, BORDER_COLOR
 int 0x10
 
 ; Set the background color (by clearing just the middle)
-mov ax, 0x0600
+;mov ax, 0x0600
 mov cx, MAIN_TOP_LEFT
 mov dx, MAIN_BOTTOM_RIGHT
 mov bh, MAIN_COLOR
 int 0x10
+
+; Load the code from the extra sectors
+mov ah, 0x02
+mov al, NUM_EXTRA_SECTORS
+mov bx, SECTOR_SIZE ; es:bx is address to write to. es = cs, so write directly after the boot sector
+mov cx, 0x0002 ; Cylinder 0; Sector 2 (1 is the boot sector)
+pop dx ; the boot disk number (dl)
+xor dh, dh ; Head 0
+int 0x13
+
+; Check for errors
+cmp ax, NUM_EXTRA_SECTORS
+je start_
+
+push ax ; push the error code
+
+; Print the error message
+mov ax, 0x1301 ; Write String, move cursor mode in al
+mov bp, error_msg ; String pointer in es:bp (es is at code start from bootsect-header.asm)
+mov cx, error_msg_len ; Streng length
+mov dx, 0x0210 ; row = 2, col = 16
+mov bx, MAIN_COLOR ; bh = 0 (page number); bl = color
+int 0x10
+
+pop cx ; pop the error code
+call print_hex ; print the error code
+
+jmp $ ; stop forever
+
+; Turns al into a hex ascii char. Expects it to only be 4 low bits.
+; Also assumes ah is already set to 0x0E
+_print_hex_char:
+    cmp al, 9
+    jg .over_9
+
+    add al, '0'
+    int 0x10
+    ret
+
+.over_9:
+    sub al, 10
+    add al, 'A'
+    int 0x10
+    ret
+
+; cx = two bytes to write at current cursor
+print_hex:
+    mov ah, 0x0E ; Scrolling teletype BIOS routine (used with int 0x10)
+    xor bx, bx ; Clear bx. bh = page, bl = color
+
+    ; Nibble 0 (most significant)
+    mov al, ch
+    shr al, 4
+    call _print_hex_char
+    ; Nibble 1
+    mov al, ch
+    and al, 0x0F
+    call _print_hex_char
+    ; Nibble 2
+    mov al, cl
+    shr al, 4
+    call _print_hex_char
+    ; Nibble 3
+    mov al, cl
+    and al, 0x0F
+    call _print_hex_char
+
+    ret
+
+error_msg: db `Error reading additional sectors from disk: `
+error_msg_len: equ $-error_msg
+
+%include "util/bootsect-footer.asm"
+
+start_:
 
 ; Print the starting greeting
 mov ax, 0x1301 ; Write String, move cursor mode in al
@@ -63,9 +149,36 @@ mov dx, 0x0010 ; row = 0, col = 16
 mov bx, BORDER_COLOR ; bh = 0 (page number); bl = color
 int 0x10
 
+; Print the row header (column byte numbers)
+mov ax, 0x1301 ; Write String, move cursor mode in al
+mov bp, row_header ; String pointer in es:bp
+mov cx, row_header_len ; Streng length
+mov dx, 0x0110 ; row = 0, col = 16
+mov bx, BORDER_COLOR ; bh = 0 (page number); bl = color
+int 0x10
+
+; Print the line numbers
+; cx = full address for user code
+mov cx, USER_CODE_LOC
+shl cx, 8
+; Set the start row number
+mov dh, 0x02
+print_line_nums:
+    ; Move the cursor to the next line number position
+    mov ax, 0x0200
+    xor bh, bh
+    mov dl, LINE_NUM_COL
+    int 0x10
+
+    call print_hex ; print cx
+    add cx, 0x10 ; Add 16 bytes to the line number
+    inc dh       ; Add one row to the cursor
+    cmp dh, END_ROW
+    jne print_line_nums
+
 ; Set cursor position to the start
 mov ax, 0x0200
-mov dx, 0x0110 ; row = 0, col = 16
+mov dx, MAIN_TOP_LEFT
 xor bh, bh ; page 0
 int 0x10
 
@@ -165,24 +278,47 @@ extra_space: ; Put two spaces in the middle
 
 new_line:
     inc dh ; Next row
-    mov dl, 0x10 ; Beginning column
+    mov dl, START_COL
 
-    cmp dh, 24 ; if we're at the bottom
+    cmp dh, END_ROW ; if we're at the bottom
     jne set_cursor
-    ; if we're at the bottom scroll
-    push cx
-    push dx
 
+    ; if we're at the bottom scroll
+    push dx ; save the cursor position
+    ; Don't bother saving cx because it is 0
+
+    ; Scroll the user code text area
     mov ax, 0x0601 ; scroll up one line
     mov cx, MAIN_TOP_LEFT
     mov dx, MAIN_BOTTOM_RIGHT
     mov bh, MAIN_COLOR
     int 0x10
 
-    pop dx
-    pop cx
+    ; Scroll the line numbers
+    mov ax, 0x0601 ; scroll up one line
+    mov cx, LINE_NUM_TOP_LEFT
+    mov dx, LINE_NUM_BOTTOM_RIGHT
+    mov bh, BORDER_COLOR
+    int 0x10
 
+    pop dx ; restore the cursor position
+
+    ; Set the cursor to the start of the new line number
     dec dh ; Back up one since we scrolled
+    mov dl, LINE_NUM_COL
+    mov ah, 0x02
+    xor bh, bh
+    int 0x10
+
+    ; Print the new line number
+    mov cx, USER_CODE_LOC
+    shl cx, 8
+    add cx, di ; Use the current write pointer to know what line we're on
+    call print_hex
+
+    mov dl, START_COL ; Set the cursor to the start of the line
+    xor cx, cx ; restore the current character (which should be 0 now)
+
 set_cursor:
     mov ah, 0x02
     xor bh, bh
@@ -197,7 +333,10 @@ run_code:
 
     jmp USER_CODE_LOC:0x00
 
-greeting: db `Write your x86 (16-bit real mode) hex here:\r\n`
+greeting: db `Write your x86 (16-bit real mode) hex here:`
 greeting_len: equ $-greeting
 
-%include "util/bootsect-footer.asm"
+row_header: db ` 0  1  2  3  4  5  6  7   8  9  A  B  C  D  E  F`
+row_header_len: equ $-row_header
+
+NUM_EXTRA_SECTORS: equ ($-start_)/SECTOR_SIZE + 1
