@@ -574,6 +574,10 @@ run_code:
     mov ax, 0x0003
     int 0x10
 
+    ; Reset the data segement to the user buffer
+    mov ax, USER_CODE_LOC
+    mov ds, ax
+
     jmp USER_CODE_LOC:0x00
 
 ; ==== Data area ====
