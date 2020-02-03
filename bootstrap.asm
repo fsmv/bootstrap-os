@@ -186,10 +186,24 @@ mov dx, 0x0110 ; row = 0, col = 16
 mov bx, BORDER_COLOR ; bh = 0 (page number); bl = color
 int 0x10
 
+; Move the cursor for printing the code segment location
+mov dh, START_ROW
+mov dl, LINE_NUM_COL-4-1 ; Space for "FFFF:"
+mov ax, 0x0200
+xor bh, bh
+int 0x10
+; Print the USER_CODE_LOC
+mov cx, USER_CODE_LOC
+call print_hex
+; Print the ":"
+mov ah, 0x0E
+mov al, ':'
+xor bh, bh
+int 0x10
+
 ; Print the line numbers
 ; cx = full address for user code
 xor cx, cx
-mov dh, START_ROW
 print_line_nums:
     ; Move the cursor to the next line number position
     mov ax, 0x0200
