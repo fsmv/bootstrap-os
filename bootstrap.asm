@@ -172,18 +172,22 @@ start_:
 
 ; Print the starting greeting
 mov ax, 0x1301 ; Write String, move cursor mode in al
+mov bx, BORDER_COLOR ; bh = 0 (page number); bl = color
 mov bp, greeting ; String pointer in es:bp (es is at code start from bootsect-header.asm)
 mov cx, greeting_len ; Streng length
 mov dx, 0x0010 ; row = 0, col = 16
-mov bx, BORDER_COLOR ; bh = 0 (page number); bl = color
 int 0x10
 
 ; Print the row header (column byte numbers)
-mov ax, 0x1301 ; Write String, move cursor mode in al
 mov bp, row_header ; String pointer in es:bp
 mov cx, row_header_len ; Streng length
-mov dx, 0x0110 ; row = 0, col = 16
-mov bx, BORDER_COLOR ; bh = 0 (page number); bl = color
+mov dx, 0x0110 ; row = 1, col = 16
+int 0x10
+
+; Print the run instructions
+mov bp, run_instr ; String pointer in es:bp
+mov cx, run_instr_len ; Streng length
+mov dx, 0x1710 ; row = END_ROW+1, col = 16
 int 0x10
 
 ; Move the cursor for printing the code segment location
@@ -601,5 +605,8 @@ greeting_len: equ $-greeting
 
 row_header: db ` 0  1  2  3  4  5  6  7   8  9  A  B  C  D  E  F`
 row_header_len: equ $-row_header
+
+run_instr: db `Press Ctrl+D to run your code immediately.`
+run_instr_len: equ $-run_instr
 
 NUM_EXTRA_SECTORS: equ ($-start_)/SECTOR_SIZE + 1
