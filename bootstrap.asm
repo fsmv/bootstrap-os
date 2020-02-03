@@ -7,8 +7,7 @@
 %define USER_CODE_LOC 0x0050
 ; Max value for di and si in typing_loop
 ; Allows ~30k of code.
-; TODO: enforce
-%define USER_CODE_MAX 0x7700 ; 0x07C00 (boot sector loc) - 0x00500
+%define USER_CODE_MAX 0x7C00-0x0500-1 ; Boot code address - code address segment reg offset - 1
 
 ; Values in ax after the keyboard read BIOS call
 ; See Figure 4-3 of the 1987 BIOS manual. (page 195)
@@ -308,6 +307,10 @@ _save_and_print_nibble:
     cmp di, si
     jne move_right ; move_right if we're not at the end
     ; If we're at the end
+
+    cmp si, USER_CODE_MAX
+    je typing_loop
+
     inc si ; move the end of the buffer forward so we can move the cursor (only user typing can do this)
     and ch, ~SAVED_NIBBLE_AT_END ; Clear the bit, we don't have a nibble anymore
     jmp move_right
@@ -399,7 +402,7 @@ move_right:
     jne .load_byte ; if we moved right and we're not at the end, load the data already entered
 
     test ch, SAVED_NIBBLE_AT_END ; if we moved to the end and there's a saved nibble there
-    jnz .load_byte ; load the whole byte, just don't worry about the garbage second nibble
+    jnz .load_byte ; just load the whole byte (the second nibble can be user data if we hit the USER_CODE_MAX)
 
     ; If we don't take either of the above jumps
     xor cl, cl ; Clear the temp storage for the next byte (maybe not really necessary)
@@ -516,6 +519,8 @@ _scroll_and_continue:
 .print_line_loop:
     cmp di, si
     jne .print_whole_byte
+    cmp si, USER_CODE_MAX
+    je .print_whole_byte ; Just always print the last byte even if the user didn't type there yet
     test ch, SAVED_NIBBLE_AT_END
     jnz .print_one_nibble
     jmp .done
