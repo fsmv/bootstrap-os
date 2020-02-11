@@ -1,0 +1,32 @@
+BIOS_DOC_NAME=IBM_BIOS_Manual_1988.pdf
+VGA_DOC_NAME=IBM_VGA_Manual_1992.pdf
+
+wget -nc https://software.intel.com/sites/default/files/managed/39/c5/325462-sdm-vol-1-2abcd-3abcd.pdf -O Intel_Architecture_Manual.pdf
+wget -nc http://bitsavers.trailing-edge.com/pdf/ibm/pc/ps2/15F0306_PS2_and_PC_BIOS_Interface_Technical_Reference_May88.pdf -O $BIOS_DOC_NAME
+
+VGA_MANUAL=0
+echo -n "Do you want the optional IBM VGA Manual? [y/n]: "
+read ans
+if [[ $ans =~ ^[Yy] ]]; then
+  VGA_MANUAL=1
+  wget -nc http://bitsavers.trailing-edge.com/pdf/ibm/pc/cards/IBM_VGA_XGA_Technical_Reference_Manual_May92.pdf -O $VGA_DOC_NAME
+fi
+
+echo -n "Add bookmarks to the IBM manual(s)? (using pdflatex) [y/n]: "
+read ans
+if [[ $ans =~ ^[Yy] ]]; then
+  echo
+  echo "Uses the packages: inputenc, pdfpages, bookmark, hyperref"
+  echo "You may have to install them and run this script again"
+  echo
+
+  pdflatex --jobname=toc --interaction=batchmode add_bookmarks_to_bios_manual.tex \
+    && rm toc.{log,aux} \
+    && rm $BIOS_DOC_NAME && mv toc.pdf $BIOS_DOC_NAME
+  #if [ $VGA_MANUAL -eq 1 ]; then
+  #  pdflatex --jobname=toc --interaction=batchmode add_bookmarks_to_vga_manual.tex \
+  #    && rm toc.{log,aux} \
+  #    && rm $VGA_DOC_NAME && mv toc.pdf $VGA_DOC_NAME
+  #  rm toc.{log,aux}
+  #fi
+fi

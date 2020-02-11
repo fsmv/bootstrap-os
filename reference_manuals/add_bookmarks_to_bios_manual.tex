@@ -1,0 +1,262 @@
+% Just run this file with pdflatex
+% Huge thanks to https://web.archive.org/web/20120616001456/https://michaelgoerz.net/blog/2011/04/pdf-bookmarks-with-latex/
+% which this entire file is templated on
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{pdfpages}
+\usepackage[
+  pdfpagelabels=true,
+  pdftitle={PS/2 and PC BIOS Interface Technical Reference},
+  pdfauthor={IBM}
+]{hyperref}
+\usepackage{bookmark}
+
+\begin{document}
+  \includepdf[pages=1-]{IBM_BIOS_Manual_1988.pdf}
+
+  \bookmark[page=01,level=0]{BIOS}
+  \bookmark[page=08,level=1]{Contents}
+  \bookmark[page=12,level=1]{Introduction}
+  \bookmark[page=18,level=1]{Interrupts}
+    \bookmark[page=22,level=2]{int 02H - Nonmaskable Interrupt (NMI)}
+    \bookmark[page=24,level=2]{int 05H - Print Screen}
+    \bookmark[page=25,level=2]{int 08H - System Timer}
+    \bookmark[page=26,level=2]{int 09H - Keyboard}
+    \bookmark[page=28,level=2]{int 10H - Video}
+      \bookmark[page=29,level=3]{ah = 00H - Set Mode}
+      \bookmark[page=33,level=3]{ah = 01H - Set Cursor Type}
+      \bookmark[page=33,level=3]{ah = 02H - Set Cursor Position}
+      \bookmark[page=33,level=3]{ah = 03H - Read Cursor Position}
+      \bookmark[page=34,level=3]{ah = 04H - Read Light Pen Position}
+      \bookmark[page=34,level=3]{ah = 05H - Select Active Display Page}
+      \bookmark[page=35,level=3]{ah = 06H - Scroll Active Page Up}
+      \bookmark[page=35,level=3]{ah = 07H - Scroll Active Page Down}
+      \bookmark[page=35,level=3]{ah = 08H - Read Attr/Char at Current Cursor Position}
+      \bookmark[page=35,level=3]{ah = 09H - Write Attr/Char at Current Cursor Position}
+      \bookmark[page=36,level=3]{ah = 0AH - Write Character at Current Cursor Position}
+      \bookmark[page=36,level=3]{ah = 0BH - Set Color Palette}
+      \bookmark[page=37,level=3]{ah = 0CH - Write Dot}
+      \bookmark[page=37,level=3]{ah = 0DH - Read Dot}
+      \bookmark[page=37,level=3]{ah = 0EH - Write Teletype to Active Page}
+      \bookmark[page=38,level=3]{ah = 0FH - Read Current Video State}
+      \bookmark[page=38,level=3]{ah = 10H - Set Palette Registers}
+      \bookmark[page=42,level=3]{ah = 11H - Character Generator}
+      \bookmark[page=50,level=3]{ah = 12H - Alternate Select}
+      \bookmark[page=54,level=3]{ah = 13H - Write String}
+      \bookmark[page=55,level=3]{ah = 14H - Load LCD Character Font}
+      \bookmark[page=55,level=3]{ah = 15H - Return Physical Display Parameters for Active Display}
+      \bookmark[page=56,level=3]{ah = 1AH - Read/Write Display Combination Code}
+      \bookmark[page=58,level=3]{ah = 1BH - Return Functionality/State Information}
+      \bookmark[page=62,level=3]{ah = 1CH - Save/Restore Video State}
+    \bookmark[page=63,level=2]{int 11H - Equipment Determination}
+    \bookmark[page=64,level=2]{int 12H - Memory Size Determination}
+    \bookmark[page=65,level=2]{int 13H - Diskette}
+      \bookmark[page=66,level=3]{ah = 00H - Read Diskette System}
+      \bookmark[page=66,level=3]{ah = 01H - Read Status of Last Operation}
+      \bookmark[page=67,level=3]{ah = 02H - Read Desired Sectors into Memory}
+      \bookmark[page=67,level=3]{ah = 03H - Write Desired Sectors from Memory}
+      \bookmark[page=68,level=3]{ah = 04H - Verify Desired Sectors}
+      \bookmark[page=68,level=3]{ah = 05H - Format Desired Track}
+      \bookmark[page=69,level=3]{ah = 08H - Read Drive Parameters}
+      \bookmark[page=71,level=3]{ah = 15H - Read DASD Type}
+      \bookmark[page=71,level=3]{ah = 16H - Diskette Change Line Status}
+      \bookmark[page=72,level=3]{ah = 17H - Set DASD Type for Format}
+      \bookmark[page=73,level=3]{ah = 18H - Set Media Type for Format}
+    \bookmark[page=75,level=2]{int 13H - Fixed Disk}
+      \bookmark[page=76,level=3]{ah = 00H - Reset Disk System}
+      \bookmark[page=77,level=3]{ah = 01H - Read Status of Last Operation}
+      \bookmark[page=77,level=3]{ah = 02H - Read Desired Sectors into Memory}
+      \bookmark[page=78,level=3]{ah = 03H - Write Desired Sectors from Memory}
+      \bookmark[page=78,level=3]{ah = 04H - Verify Desired Sectors}
+      \bookmark[page=79,level=3]{ah = 05H - Format Desired Cylinder}
+      \bookmark[page=80,level=3]{ah = 06H - Format Desired Cylinder and Set Bad Sector Flags}
+      \bookmark[page=80,level=3]{ah = 07H - Format Drive Starting at Desired Cylinder}
+      \bookmark[page=81,level=3]{ah = 08H - Read Drive Parameters}
+      \bookmark[page=81,level=3]{ah = 09H - Initialize Drive Pair Characteristics}
+      \bookmark[page=82,level=3]{ah = 0CH - Seek}
+      \bookmark[page=83,level=3]{ah = 0DH - Alternate Disk Reset}
+      \bookmark[page=83,level=3]{ah = 10H - Test Drive Ready}
+      \bookmark[page=83,level=3]{ah = 11H - Recalibrate}
+      \bookmark[page=84,level=3]{ah = 15H - Read DASO Type}
+      \bookmark[page=84,level=3]{ah = 19H - Park Heads}
+      \bookmark[page=84,level=3]{ah = 1AH - Format Unit}
+    \bookmark[page=86,level=2]{int 14H - Asynchronous Communications}
+      \bookmark[page=86,level=3]{ah = 00H - Initialize the Communications Port}
+      \bookmark[page=87,level=3]{ah = 01H - Send Character}
+      \bookmark[page=87,level=3]{ah = 02H - Receive Character}
+      \bookmark[page=88,level=3]{ah = 03H - Read Status}
+      \bookmark[page=88,level=3]{ah = 04H - Extended Initialize}
+      \bookmark[page=89,level=3]{ah = 05H - Extended Communications Port Control}
+    \bookmark[page=90,level=2]{int 15H - System Services}
+      \bookmark[page=091,level=3]{ah = 00H - Turn Cassette Motor On}
+      \bookmark[page=091,level=3]{ah = 01H - Turn Cassette Motor Off}
+      \bookmark[page=091,level=3]{ah = 02H - Read Blocks from Cassette}
+      \bookmark[page=092,level=3]{ah = 03H - Write Blocks to Cassette}
+      \bookmark[page=092,level=3]{ah = 0FH - Format Unit Periodic Interrupt}
+      \bookmark[page=093,level=3]{ah = 21H - Power-On Self-Test Error Log}
+      \bookmark[page=094,level=3]{ah = 40H - Read/Modify Profiles}
+      \bookmark[page=095,level=3]{ah = 41H - Wait for External Event}
+      \bookmark[page=095,level=3]{ah = 42H - Request System Power-Off}
+      \bookmark[page=096,level=3]{ah = 43H - Read System Status}
+      \bookmark[page=097,level=3]{ah = 44H - Activate/Deactivate Internal Modem Power}
+      \bookmark[page=097,level=3]{ah = 4FH - Keyboard Intercept}
+      \bookmark[page=098,level=3]{ah = 80H - Device Open}
+      \bookmark[page=099,level=3]{ah = 81H - Device Close}
+      \bookmark[page=099,level=3]{ah = 82H - Program Termination}
+      \bookmark[page=099,level=3]{ah = 83H - Event Wait}
+      \bookmark[page=100,level=3]{ah = 84H - Joystick Support}
+      \bookmark[page=101,level=3]{ah = 85H - System Request Key Pressed}
+      \bookmark[page=102,level=3]{ah = 86H - Wait}
+      \bookmark[page=102,level=3]{ah = 87H - Move Block}
+      \bookmark[page=104,level=3]{ah = 88H - Extended Memory Size Determine}
+      \bookmark[page=105,level=3]{ah = 89H - Switch Processor to Protected Mode}
+      \bookmark[page=108,level=3]{ah = 90H - Device Busy}
+      \bookmark[page=109,level=3]{ah = 91H - Interrupt Complete}
+      \bookmark[page=109,level=3]{ah = C0H - Return System Configuration Parameters}
+      \bookmark[page=111,level=3]{ah = C1H - Return Extended BIOS Data Area Segment Address}
+      \bookmark[page=112,level=3]{ah = C2H - Pointing Device BIOS Interface}
+      \bookmark[page=116,level=3]{ah = C3H - Enable/Disable Watchdog Time-Out}
+      \bookmark[page=117,level=3]{ah = C4H - Programmable Option Select}
+    \bookmark[page=119,level=2]{int 16H - Keyboard}
+      \bookmark[page=121,level=3]{ah = 00H - Keyboard Read}
+      \bookmark[page=121,level=3]{ah = 01H - Keystroke Status}
+      \bookmark[page=122,level=3]{ah = 02H - Shift Status}
+      \bookmark[page=122,level=3]{ah = 03H - Set Typematic Rate}
+      \bookmark[page=123,level=3]{ah = 04H - Keyboard Click Adjustment}
+      \bookmark[page=123,level=3]{ah = 05H - Keyboard Write}
+      \bookmark[page=124,level=3]{ah = 09H - Keyboard Functionality Determination}
+      \bookmark[page=125,level=3]{ah = 10H - Extended Keyboard Read}
+      \bookmark[page=125,level=3]{ah = 11H - Extended Keystroke Status}
+      \bookmark[page=126,level=3]{ah = 12H - Extended Shift Status}
+    \bookmark[page=127,level=2]{int 17H - Printer}
+      \bookmark[page=127,level=3]{ah = 00H - Print Character}
+      \bookmark[page=127,level=3]{ah = 01H - Initialize the Printer Port}
+      \bookmark[page=128,level=3]{ah = 02H - Read Status}
+    \bookmark[page=130,level=2]{int 19H - Bootstrap Loader}
+    \bookmark[page=131,level=2]{int 1AH - System-Timer and Real-Time Clock Services}
+      \bookmark[page=131,level=3]{ah = 00H - Read System-Timer Time Counter}
+      \bookmark[page=132,level=3]{ah = 01H - Set System-Timer Time Counter}
+      \bookmark[page=132,level=3]{ah = 02H - Read Real-Time Clock Time}
+      \bookmark[page=133,level=3]{ah = 03H - Set Real-Time Clock Time}
+      \bookmark[page=133,level=3]{ah = 04H - Read Real-Time Clock Date}
+      \bookmark[page=133,level=3]{ah = 05H - Set Real-Time Clock Date}
+      \bookmark[page=134,level=3]{ah = 06H - Set Real-Time Clock Alarm}
+      \bookmark[page=134,level=3]{ah = 07H - Reset Real-Time Clock Alarm}
+      \bookmark[page=135,level=3]{ah = 08H - Set Real-Time Clock Activated Power-On Mode}
+      \bookmark[page=135,level=3]{ah = 09H - Read Real-Time Clock Alarm Time and Status}
+      \bookmark[page=136,level=3]{ah = 0AH - Read System-Timer Day Counter}
+      \bookmark[page=136,level=3]{ah = 0BH - Set System-Timer Day Counter}
+      \bookmark[page=137,level=3]{ah = 80H - Set Up Sound Multiplexer}
+    \bookmark[page=138,level=2]{int 70H - Real-Time Clock Interrupt}
+  \bookmark[page=140,level=1]{Data Areas and ROM Tables}
+    \bookmark[page=142,level=2]{BIOS Data Area}
+    \bookmark[page=156,level=2]{Extended BIOS Data Area}
+    \bookmark[page=157,level=2]{ROM Tables}
+      \bookmark[page=157,level=3]{Fixed Disk Drive Parameter Table}
+      \bookmark[page=165,level=3]{Diskette Drive Parameter Table}
+  \bookmark[page=166,level=1]{Additional Information}
+    \bookmark[page=168,level=2]{Interrupt Sharing}
+    \bookmark[page=177,level=2]{Adapter ROM}
+    \bookmark[page=179,level=2]{Video Function Compatibility}
+    \bookmark[page=181,level=2]{Multitasking Provisions}
+    \bookmark[page=183,level=2]{System Identification}
+    \bookmark[page=184,level=2]{Application Guidelines}
+    \bookmark[page=189,level=2]{Scan Code/Character Code Combinations}
+  \bookmark[page=200,level=1]{Index}
+
+  \bookmark[page=210,level=0]{Advanced BIOS}
+  \bookmark[page=210,level=1]{Contents}
+  \bookmark[page=214,level=1]{Introduction}
+    \bookmark[page=216,level=2]{Introduction}
+    \bookmark[page=217,level=2]{Data Structures}
+    \bookmark[page=218,level=2]{Initialization}
+    \bookmark[page=219,level=2]{Transfer Conventions}
+    \bookmark[page=220,level=2]{Interrupt Processing}
+    \bookmark[page=221,level=2]{Extending ABIOS}
+  \bookmark[page=222,level=1]{Data Structures}
+    \bookmark[page=224,level=2]{Introduction}
+    \bookmark[page=224,level=2]{Common Data Area}
+    \bookmark[page=228,level=2]{Function Transfer Table}
+    \bookmark[page=230,level=2]{Device Block}
+  \bookmark[page=236,level=1]{Initialization}
+    \bookmark[page=238,level=2]{Introduction}
+    \bookmark[page=239,level=2]{Build System Parameters Table - Operating System}
+    \bookmark[page=239,level=2]{Build System Parameters Table - BIOS}
+    \bookmark[page=241,level=2]{Build Initialization Table - Operating System}
+    \bookmark[page=241,level=2]{Build Initialization Table - BIOS}
+    \bookmark[page=244,level=2]{Build Common Data Area - Operating System}
+    \bookmark[page=245,level=2]{Initialize Pointers - Operating System}
+    \bookmark[page=246,level=2]{Initialize Data Structures - ABIOS}
+    \bookmark[page=248,level=2]{Logical ID 2 Initialization}
+    \bookmark[page=249,level=2]{Build Protected Mode Tables}
+  \bookmark[page=252,level=1]{Transfer Conventions}
+    \bookmark[page=254,level=2]{Introduction}
+    \bookmark[page=254,level=2]{Request Block}
+      \bookmark[page=256,level=3]{Functional Parameters}
+      \bookmark[page=256,level=3]{Service Specific Parameters}
+    \bookmark[page=265,level=2]{ABIOS Transfer Convention}
+    \bookmark[page=267,level=2]{Operating System Transfer Convention}
+  \bookmark[page=270,level=1]{Additional Information}
+    \bookmark[page=272,level=2]{Interrupt Processing}
+      \bookmark[page=272,level=3]{Interrupt Flow}
+      \bookmark[page=272,level=3]{Interrupt Sharing}
+      \bookmark[page=274,level=3]{Default Interrupt Handler}
+    \bookmark[page=275,level=2]{Adding, Patching, Extending, and Replacing}
+      \bookmark[page=276,level=3]{Adapter ROM Structure}
+      \bookmark[page=278,level=3]{RAM Extension Structure}
+      \bookmark[page=281,level=3]{Adding}
+      \bookmark[page=281,level=3]{Patching}
+      \bookmark[page=283,level=3]{Extending}
+      \bookmark[page=285,level=3]{Replacing}
+      \bookmark[page=287,level=3]{Considerations for RAM Extensions}
+    \bookmark[page=289,level=2]{Operating Systems Implementation Considerations}
+      \bookmark[page=289,level=3]{ABIOS Rules}
+      \bookmark[page=291,level=3]{Considerations for Bimodal Implementations}
+  \bookmark[page=296,level=1]{Interfaces}
+    \bookmark[page=298,level=2]{Introduction}
+    \bookmark[page=300,level=2]{Diskette}
+      \bookmark[page=313,level=3]{Return Codes}
+      \bookmark[page=313,level=3]{Programming Considerations}
+    \bookmark[page=316,level=2]{Disk}
+      \bookmark[page=324,level=3]{Return Codes}
+      \bookmark[page=326,level=3]{Programming Considerations}
+    \bookmark[page=328,level=2]{Video}
+      \bookmark[page=343,level=3]{Return Codes}
+      \bookmark[page=343,level=3]{Video Modes}
+    \bookmark[page=344,level=2]{Keyboard}
+      \bookmark[page=353,level=3]{Return Codes}
+      \bookmark[page=353,level=3]{Programming Considerations}
+    \bookmark[page=356,level=2]{Parallel Port}
+      \bookmark[page=361,level=3]{Return Codes}
+      \bookmark[page=362,level=3]{Programming Considerations}
+    \bookmark[page=364,level=2]{Asynchronous Communications}
+      \bookmark[page=386,level=3]{Return Codes}
+      \bookmark[page=386,level=3]{Programming Considerations}
+    \bookmark[page=392,level=2]{System Timer}
+      \bookmark[page=393,level=3]{Return Codes}
+      \bookmark[page=393,level=3]{Programming Considerations}
+    \bookmark[page=394,level=2]{Real-Time Clock}
+      \bookmark[page=402,level=3]{Return Codes}
+      \bookmark[page=402,level=3]{Programming Considerations}
+    \bookmark[page=404,level=2]{System Services}
+      \bookmark[page=407,level=3]{Return Codes}
+    \bookmark[page=408,level=2]{Nonmaskable Interrupt (NMI)}
+      \bookmark[page=410,level=3]{Return Codes}
+    \bookmark[page=412,level=2]{Pointing Device}
+      \bookmark[page=418,level=3]{Return Codes}
+      \bookmark[page=419,level=3]{Programming Considerations}
+    \bookmark[page=420,level=2]{Nonvolatile Random Access Memory (NVRAM)}
+      \bookmark[page=423,level=3]{Return Codes}
+      \bookmark[page=423,level=3]{Programming Considerations}
+    \bookmark[page=424,level=2]{Direct Memory Access (DMA)}
+      \bookmark[page=431,level=3]{Return Codes}
+      \bookmark[page=431,level=3]{Programming Considerations}
+    \bookmark[page=434,level=2]{Programmable Option Select (POS)}
+      \bookmark[page=439,level=3]{Return Codes}
+    \bookmark[page=440,level=2]{Keyboard Security}
+      \bookmark[page=445,level=3]{Return Codes}
+  \bookmark[page=446,level=1]{Index}
+  \bookmark[page=462,level=1]{Asynchronous Communications Supplement}
+  \bookmark[page=464,level=1]{Programmable Option Select Supplement}
+
+\end{document}
