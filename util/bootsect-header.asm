@@ -1,17 +1,30 @@
 ; Provided under the MIT License: http://mit-license.org/
 ; Copyright (c) 2020 Andrew Kallmeyer <ask@ask.systems>
+; All the voodoo required to boot on modern hardware. Mostly it is spaces and
+; magic numbers for compatibilty with various extensions to BIOS that became
+; de-facto standard over time.
+;
+; A lot of this came from https://wiki.osdev.org/Problems_Booting_From_USB_Flash
+
 ; Jump past the BIOS Parameter block, which is needed for USB boots
-; Apparently some BIOS check for this, so I think we can't set cs here
+;
+; Apparently some BIOS implementations check for this instruction, so I think
+; we can't just set the cs register here right away
 jmp start
-nop
+nop ; Take up the remaning byte before the BIOS parameter block
+
+; The BIOS parameter block. This stores information about the floppy disk the
+; code is on. In USB boots like we're set up for, the BIOS just overwrites this
+; section in memory with the right data.
 times 8 db 0 ; OEM Name. I've seen 'MSDOS5.0' here, not sure if that's needed
-; BIOS parameter block, would need data if we were on a floppy
-; In USB boots the BIOS fills in fake floppy information
+; Space for the BPB
 times 0x33 db 0 
 start:
 
 ; Set the code segment to 0x7C0, optional if there's no absolute jumps
 ; The bootsector code is always loaded at 0x7C00 by the BIOS
+;
+; This has never changed and is documented in the BIOS manual under int 19H
 jmp 0x7C0:start2
 start2:
 
@@ -27,3 +40,5 @@ mov ds, ax
 mov es, ax
 
 cld ; Set the direction flag to forward (for string instructions)
+
+; Must not overwrite dl which is the boot drive number
