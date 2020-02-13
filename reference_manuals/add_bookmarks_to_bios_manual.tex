@@ -1,4 +1,4 @@
-% Just run this file with pdflatex
+% To run: pdflatex "\\def\\filename{$FILENAME}\\input{$THIS_FILE}"
 % Huge thanks to https://web.archive.org/web/20120616001456/https://michaelgoerz.net/blog/2011/04/pdf-bookmarks-with-latex/
 % which this entire file is templated on
 \documentclass{article}
@@ -12,7 +12,7 @@
 \usepackage{bookmark}
 
 \begin{document}
-  \includepdf[pages=1-]{IBM_BIOS_Manual_1988.pdf}
+  \includepdf[pages=1-]{\filename}
 
   \bookmark[page=01,level=0]{BIOS}
   \bookmark[page=08,level=1]{Contents}
