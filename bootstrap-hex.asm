@@ -1,6 +1,5 @@
 ; Provided under the MIT License: http://mit-license.org/
 ; Copyright (c) 2020 Andrew Kallmeyer <ask@ask.systems>
-
 %define SECTOR_SIZE 0x200
 
 ; Segment register value. Actual location is 0x00500
