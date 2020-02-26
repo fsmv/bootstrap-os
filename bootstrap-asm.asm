@@ -23,6 +23,7 @@
 %define START_COL 0x04
 %define END_ROW 0x16
 %define END_COL 0x4B
+%define LINE_LENGTH END_COL-START_COL+1
 
 %include "util/bootsect-header.asm"
 
@@ -330,43 +331,34 @@ _scroll_and_continue:
     mov al, 1 ; scroll one line
     mov cx, MAIN_TOP_LEFT
     mov dx, MAIN_BOTTOM_RIGHT
-    mov bh, MAIN_COLOR
+    mov bh, MAIN_COLOR ; Also clear bh because it's the page number for write string below
     int 0x10
 
-    ; Set the buffer pointer to the start of the line
     mov dx, [bp-2] ; restore the cursor position
-    xor dh, dh
-    sub dl, START_COL
-    sub di, dx ; write_pointer -= cursor_col - START_COL
 
-    ; Move the cursor to the start of the line
-    mov dx, [bp-2] ; restore the cursor position (need the row)
-    mov dl, START_COL
-    mov ah, 0x02
-    xor bh, bh
+    ; Print the line from the buffer
+
+    ; Set bp to the pointer to the start of the line
+    ; bp = di - (dl - START_COL) = di - dl + START_COL
+    mov ax, dx ; put dx in ax because we're clobbering bp and can't restore after this
+    and ax, 0x00FF ; Clear the cursor row because we can't subtract r8 from r16
+    mov bp, di
+    sub bp, ax
+    add bp, START_COL
+
+    ; cx (number of chars to write) = min(si-bp, LINE_LENGTH)
+    mov cx, si
+    sub cx, bp
+    cmp cx, LINE_LENGTH
+    jl .hit_end_of_buffer
+    mov cx, LINE_LENGTH ; would be a good place for a cmov if 8086 supported it
+    .hit_end_of_buffer:
+
+    mov dl, START_COL  ; keep the row but move to the start column
+    mov bx, MAIN_COLOR ; bh = 0 (page number); bl = color
+    mov ax, 0x1300     ; Write String, without moving the cursor
     int 0x10
 
-; Prints a line from the [es:di] up to the end of the screen or [es:si]
-.print_line_loop:
-    cmp di, si
-    je .done
-
-    mov al, [es:di] ; read the char from the buffer
-
-    ; Print the ascii char
-    mov ah, 0x0E ; Write teletype character
-    xor bh, bh ; Note: cannot clear bl here
-    int 0x10
-
-    ; If we printed the last byte of the line, we're done
-    cmp dl, END_COL
-    je .done
-
-    inc dl ; keep track of how many characters we've written
-    inc di
-    jmp .print_line_loop
-
-    .done:
     pop di ; restore the write pointer
     pop dx ; restore the cursor position
     jmp set_cursor_and_continue
