@@ -1,12 +1,12 @@
 ; Provided under the MIT License: http://mit-license.org/
 ; Copyright (c) 2020 Andrew Kallmeyer <ask@ask.systems>
-%define SECTOR_SIZE 0x200
+%define SECTOR_SIZE 512
 
 ; Segment register value. Actual location is 0x00500
 %define USER_CODE_LOC 0x0050
 ; Max value for di and si in typing_loop
 ; Allows ~30k of code.
-%define USER_CODE_MAX 0x7C00-0x0500-1 ; Boot code address - code address segment reg offset - 1
+%define USER_CODE_MAX (0x7C00-0x0500-1) ; Boot code address - code address segment reg offset - 1
 
 ; Values in ax after the keyboard read BIOS call
 ; See Figure 4-3 of the 1987 BIOS manual. (page 195)
@@ -15,15 +15,17 @@
 %define EOT 0x2004 ; Ctrl+D
 
 %define MAIN_COLOR 0x17
-%define BORDER_COLOR 0x91
+%define BORDER_COLOR 0x97
 
+; Note that the code requires that there's at least one character of border
 %define MAIN_TOP_LEFT 0x0204 ; row = 2,  col = 2
 %define MAIN_BOTTOM_RIGHT 0x164B ; row = 22, col = 79-2
 %define START_ROW 0x02
 %define START_COL 0x04
 %define END_ROW 0x16
 %define END_COL 0x4B
-%define ROW_LENGTH END_COL-START_COL+1
+%define ROW_LENGTH (END_COL-START_COL+1) ; 0x48, 72
+%define NUM_PRINTS_PER_ROW (ROW_LENGTH/5) ; 5 = 4 hex chars + 1 space
 
 %include "util/bootsect-header.asm"
 
@@ -153,8 +155,64 @@ print_hex:
 
   ret
 
+; Prints a hex word in the top margin for debugging purposes
+; Supports printing as many as will fit in before it runs into the text area
+;
+; cx = two bytes to write at current cursor
+; clobbers ax, and bx
+debug_print_hex:
+  push dx ; Save the cursor position
+
+  ; One row above the top of the text area
+  mov dl, START_COL
+  xor dh, dh
+
+  ; Calculate where to print based on number of words we have printed
+  xor ax, ax
+  mov byte al, [num_debug_prints]
+  mov bl, NUM_PRINTS_PER_ROW
+  div bl
+  ; al = (num_debug_prints)/(num_per_row); ah = (num_debug_prints) % (num_per_row)
+
+  add dh, al ; row += the row to print on
+
+  cmp dh, START_ROW
+  je .no_more_room
+
+  inc byte [num_debug_prints] ; remember that we printed
+
+  ; column += modulus * (hex+" " string length)
+  mov al, ah
+  xor ah, ah
+  mov bl, 5
+  mul bl
+  add dl, al ; note: the mul result technically could be more than 2^8 (in ax) but we know it is less than ROW_LENGTH
+
+  ; set cursor to the location to print
+  mov ah, 0x02
+  xor bh, bh
+  int 0x10 ; dx is the cursor position
+
+  ; Print cx
+  call print_hex
+  ; don't bother printing a space because the margin is blank
+
+  ; fallthrough
+.no_more_room:
+  ; reset the cursor
+  pop dx
+  mov ah, 0x02
+  xor bh, bh
+  int 0x10 ; dx is the cursor position
+
+  ret
+
+; === Bootsector data area ===
+
 error_msg: db `Error reading additional sectors from disk: `
 error_msg_len: equ $-error_msg
+
+num_debug_prints: db 0x00
 
 BOOT_DISK: db 0x00 ; value is filled first thing
 
@@ -170,7 +228,7 @@ int 0x10
 
 ; --- typing_loop global register variables ---
 ;
-; dx    - cursor position (set above)
+; dx      - cursor position (set above)
 ; [es:di] - the current position to write to in the user code buffer (di=0 is the beginning)
 ; [es:si] - the end of the user code buffer (will possibly be only half a byte)
 mov ax, USER_CODE_LOC
@@ -210,13 +268,80 @@ typing_loop:
 
   jmp typing_loop ; Doesn't match anything above
 
-; ==== typing_loop internal helpers ===
+; ==== typing_loop helpers that use ret ====
+
+; Print a line from the buffer at the beginning of the current cursor row
+;
+; Args:
+;   bp : pointer to print from
+;   cx : number of characters to print
+;   dx : cursor position (prints from START_COL in cursor row)
+print_line:
+  push dx
+  ; Print the line from the buffer
+  ; bp is already the pointer to print from
+  ; cx is number of chars to print
+  mov dl, START_COL  ; keep the row but move to the start column
+  xor bh, bh ; page number 0
+  mov bl, MAIN_COLOR
+  mov ax, 0x1300     ; Write String, without moving the cursor
+  int 0x10
+
+  pop dx ; restore the cursor position
+  ret
+
+; Sets or clears left or right markers for horizontal line scrolling
+; Note: This should be called with call
+;
+; Args:
+;   ah : 1 set the marker, 0 clear the marker
+;   al : 0 for right side, 1 for left side
+;   dx : cursor position (sets the marker on the cursor row)
+set_line_scroll_marker:
+  push dx
+  push cx
+
+  ; Set the column to print at and the character to print based on al
+  test al, al
+  jz .right_side
+  ; .left_side:
+  mov dl, START_COL-1
+  mov al, '>'
+  jmp .check_clear
+  .right_side:
+  mov dl, END_COL+1
+  mov al, '<'
+  .check_clear:
+
+  ; Clear the marker depending on ah
+  test ah, ah
+  jnz .no_clear_marker
+  mov al, ' ' ; clear the marker by printing a space
+  .no_clear_marker:
+
+  ; Move the cursor to the margin
+  mov ah, 0x02
+  xor bh, bh ; page number (for both calls)
+  int 0x10
+
+  ; Print the character
+  ; Note: don't use a single Write String call because we'd have to change es
+  mov ah, 0x09
+  mov cx, 1 ; number of characters to print
+  mov bl, BORDER_COLOR
+  int 0x10
+
+  pop cx
+  pop dx
+  ret
+
+; ==== typing_loop internal helpers that continue the loop ====
 
 ; Takes an ascii char in al then saves and prints it and continues typing_loop
 save_and_print_char:
   ; Print the ascii char (in al)
   mov ah, 0x0E ; Write teletype character
-  xor bh, bh ; Note: cannot clear bl here
+  xor bh, bh
   int 0x10
 
   mov [es:di], al
@@ -269,19 +394,46 @@ save_new_line:
   cmp byte [es:di-1], `\n`
   je typing_loop
 
-  ; Disallow new lines at the very end of a row
-  ;
-  ; Because the line has already wrapped. It would create a blank line that
-  ; causes the same problems as consecutive new lines and needs some other
-  ; code chanes around new line handling.
-  cmp dl, END_ROW
-  je typing_loop
+  ; If we're scrolled to the right we have an extra space we need to remove
+  ; TODO: can this be avoided by calling move_right?
+  cmp dl, END_COL
+  jne .not_scrolled
 
+  ; Reprint the current line up to the new \n which will go at [es:di]
+  lea bp, [di-ROW_LENGTH]
+
+  ; it's possible we're on the last column but we haven't scrolled yet
+  cmp bp, -1 ; if we are exactly ROW_LENGTH-1 chars into the buffer
+  je .not_scrolled
+  cmp byte [es:bp], `\n` ; if we have typed ROW_LENGTH-1 chars on this line
+  je .not_scrolled
+
+  ; We might need to clear the scroll marker if there was only 1 char cut off
+  cmp bp, 0
+  je .clear_marker
+  cmp byte [es:bp-1], `\n`
+  je .clear_marker
+  jmp .still_some_cut_off
+  .clear_marker:
+  ; Clear the left scroll marker
+  mov ax, 0x0001
+  call set_line_scroll_marker
+  .still_some_cut_off:
+
+  ; Reprint the current line up to the \n
+  mov cx, ROW_LENGTH
+  call print_line
+
+  ; fallthrough
+  .not_scrolled:
+
+  ; Write the new line and advance buffer pointers
   mov byte [es:di], `\n`
   inc di
   inc si
   mov byte [es:di], 0 ; Clear the next byte so we can check for \n
 
+  ; Scroll to the next line
   mov dl, START_COL
   mov bp, di
   xor cx, cx
@@ -301,25 +453,59 @@ move_left:
   cmp byte [es:di], `\n`
   je .prev_line
 
-  ; The line was just wrapped so go up to the next screen line
   cmp dl, START_COL
-  je .prev_screen_line
+  je .scroll_line_left
 
   ; Normal case, just go back one char
   dec dl
   jmp set_cursor_and_continue
 
-  .prev_screen_line:
-  ; We know that this was a wrapped line so we know there must be ROW_LENGTH
-  ; characters in the buffer to skip past
+  .scroll_line_left:
+  ; cursor is already where it needs to be
+
+  ; Print the right-side marker if this is the first time we've cut off a char
+  ; on the right.
   ;
-  ; If we called .prev_line instead it would actually bounds check but always
-  ; get the same answer
-  mov dl, END_COL
-  mov bp, di
-  sub bp, ROW_LENGTH-1 ; set the pointer to print from to the first char of the row
-  mov cx, ROW_LENGTH   ; number of characters to print
-  jmp _move_up
+  ; We're printing the chars at [di+0, di+ROW_LENGTH-1] and we know that
+  ; [di+ROW_LENGTH] is the character we're cutting off now. Then if the next
+  ; chacter is the new line we know that this is the first time we've cut-off
+  ; a character on the right side in this line.
+  ;
+  ; The first check shortcuts when we're at the end of the buffer. Technically
+  ; we only need this to not read past [es:USER_CODE_MAX], because we have
+  ; garunteed that si+1 is safe to compare with \n for move_right to work.
+  lea bp, [di+ROW_LENGTH]
+  cmp bp, si
+  je .need_right_marker
+  cmp byte [es:di+ROW_LENGTH+1], `\n`
+  jne .already_have_right_marker
+  .need_right_marker:
+  ; Print the marker on the right margin to show the line was cut off
+  mov ax, 0x0100
+  call set_line_scroll_marker
+  .already_have_right_marker:
+
+  ; Set args for print_line
+  mov bp, di ; start printing where the cursor is
+  ; Print ROW_LENGTH characters
+  ;
+  ; We know there are this many chars because we hit START_COL and there's no
+  ; new line, meaning we scrolled which can only happen when the line is long
+  mov cx, ROW_LENGTH
+
+  ; Check if we're at the start of the line and clear the left marker if so
+  test di, di
+  jz .at_beginning_of_line
+  cmp byte [es:di-1], `\n` ; -1 is safe because of the above check
+  je .at_beginning_of_line
+  jmp .keep_marker
+  .at_beginning_of_line:
+  ; Clear the marker on the left side
+  mov ax, 0x0001
+  call set_line_scroll_marker
+  .keep_marker:
+  call print_line
+  jmp set_cursor_and_continue
 
   .prev_line:
   ; Don't go past the start of the buffer if the first char is \n
@@ -349,17 +535,17 @@ move_left:
   .found_length:
   cmp cx, ROW_LENGTH
   jle .done
-
+  ; Move the print pointer to the end of the line minus ROW_LENGTH
   add bp, cx
+  sub bp, ROW_LENGTH
+  mov cx, ROW_LENGTH ; we're printing ROW_LENGTH characters
 
-  ; cx = cx % ROW_LENGTH
-  mov ax, cx
-  mov cl, ROW_LENGTH
-  div cl
-  mov cl, ah
-  xor ch, ch
-
-  sub bp, cx
+  ; TODO: repaint the line we're scrolling to
+  ; this kinda should go in _move_up but things are getting pretty confusing
+  ; I think it kinda needs a refactor, maybe we should call _scroll_and_continue directly
+  ; _move_up can't really easily be repurposed for up arrow key anymore
+  ;
+  ; Also need to set the line wrapping marker correctly
 
   ; fallthrough
   .done:
@@ -380,10 +566,10 @@ move_right:
   inc di
 
   cmp byte [es:di], `\n`
-  je .next_line_skip_newline
+  je .next_line
 
   cmp dl, END_COL
-  je .next_line
+  je .scroll_line_right
 
   ; Normal case, just go right one
   ;
@@ -392,18 +578,72 @@ move_right:
   inc dl
   jmp set_cursor_and_continue
 
-  .next_line_skip_newline:
+  .scroll_line_right:
+  lea bp, [di-(ROW_LENGTH-1)] ; print starting from the second char in the row
+  mov cx, ROW_LENGTH ; number of chars to print
+
+  ; Note: we know that bp >= 1 here because we scrolled right so we must have
+  ; at least ROW_LENGTH characters in the buffer
+
+  ; Print the left-side marker if this is the first time we've cut off a char
+  cmp bp, 1 ; if the first char in the line is the first char in the buffer
+  je .need_left_marker
+  ; Now we know that bp >= 2 because bp != 1
+  cmp byte [es:bp-2], `\n` ; if the char before the first char in the line is \n
+  jne .already_have_left_marker
+  .need_left_marker:
+  mov ax, 0x0101 ; set to on ; left margin
+  call set_line_scroll_marker
+  .already_have_left_marker:
+
+  ; Check if we're at the end of the line and clear the right marker if so
+  cmp di, si
+  je .at_end_of_buffer
+  cmp byte [es:di+1], `\n`
+  je .at_end_of_line
+  jmp .keep_marker
+
+  ; We need to leave a space for the next character to type
+  .at_end_of_buffer:
+  ; don't leave a space for typing if we're at the end of the buffer
+  ; also protects from overwriting user code with a space
+  cmp si, USER_CODE_MAX
+  je .at_end_of_line
+  ; Put a space in the buffer so we print it and overwrite on the screen the
+  ; last char the user typed. This avoids doing a two extra BIOS calls to
+  ; clear the character.
+  ;
+  ; This is 1 past the last char the user typed, and we know that we haven't
+  ; run out of buffer space. Also note that di == si here.
+  mov byte [es:di], ' '
+
+  ; fallthrough
+  .at_end_of_line:
+  ; Clear the marker on the right side
+  mov ax, 0x0000
+  call set_line_scroll_marker
+  .keep_marker:
+  call print_line
+  jmp set_cursor_and_continue
+
+  .next_line:
+
+  ; TODO: scan backwards and repaint the current line
+
+  ; Skip the \n char
   ; We know if we found a new line there is space for one more char
   ; i.e. di < si
   inc di
-  .next_line:
+
   mov dl, START_COL
   mov bp, di ; the start of the string to print from on the new line
-  xor cx, cx ; _move_down should scan for the \n to find the length
   ; We don't always have to scan the string (if we're not scrolling the screen)
   ; so not scanning the string here saves the work sometimes.
   jmp _move_down
 
+; TODO: consider just inlining move_up and move_down because I don't think they
+; can be re-used anymore
+ 
 ; Move the cursor up one line and keep the same column.
 ;
 ;  - Prints existing data if scolling to a part of the buffer with data
@@ -414,7 +654,7 @@ move_right:
 ; Args:
 ;   dl : final cursor column
 ;   bp : pointer to start printing from
-;   cx : number of characters to print (0 if it should scan for '\n')
+;   cx : number of characters to print
 _move_up:
   cmp dh, START_ROW
   je .scroll_down
@@ -437,7 +677,6 @@ _move_up:
 ; Args:
 ;   dl : final cursor column
 ;   bp : pointer to start printing from
-;   cx : number of characters to print (0 if it should scan for '\n')
 _move_down:
   cmp dh, END_ROW ; if we're at the bottom
   je .scroll_up
@@ -447,6 +686,7 @@ _move_down:
 
   .scroll_up:
   mov al, 0
+  xor cx, cx ; _scroll_and_continue should scan for the \n to find the length
   jmp _scroll_and_continue
 
 ; Scrolls the text up or down one row printing any existing data in the text
@@ -458,6 +698,10 @@ _move_down:
 ;   bp : pointer to start printing from
 ;   cx : number of characters to print (0 if it should scan for '\n')
 _scroll_and_continue:
+  ; TODO consider refactoring this into a call function and leave out the
+  ; printing part. Then it doesn't need all these args and move_down can just
+  ; do the scanning work after the call
+
   push dx ; cursor position
   push cx ; number of characters to print or 0 if we should scan
   push bp ; string to print
@@ -500,29 +744,34 @@ _scroll_and_continue:
 
   cmp bp, si
   je .found_length
-  cmp cx, ROW_LENGTH
+  cmp cx, ROW_LENGTH+1 ; we only need to know it's longer than the row
   je .found_length
 
   jmp .find_string_length
 
   .found_length:
+  cmp cx, ROW_LENGTH
+  jle .already_know_length
+
+  ; If we had more than a row just print the row
+  mov cx, ROW_LENGTH
+  ; Set the marker on the right to show we have a cut off string
+  mov ax, 0x0100
+  call set_line_scroll_marker
 
   ; restore the string to print pointer
   mov bp, sp
   mov bp, [bp]
 
   .already_know_length:
-  ; Print the line from the buffer
-  ; bp is already the pointer to print from
-  ; cx is number of chars to print
-  mov dl, START_COL  ; keep the row but move to the start column
-  mov bx, MAIN_COLOR ; bh = 0 (page number); bl = color
-  mov ax, 0x1300   ; Write String, without moving the cursor
-  int 0x10
-
-  .nothing_to_print:
   add sp, 4 ; Clear the two args off the stack
   pop dx ; restore the cursor position
+  call print_line
   jmp set_cursor_and_continue
 
-NUM_EXTRA_SECTORS: equ ($-start_)/SECTOR_SIZE + 1
+  .nothing_to_print:
+  add sp, 4
+  pop dx
+  jmp set_cursor_and_continue
+
+NUM_EXTRA_SECTORS: equ ($-start_-1)/SECTOR_SIZE + 1
