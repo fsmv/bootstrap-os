@@ -270,6 +270,34 @@ typing_loop:
 
 ; ==== typing_loop helpers that use ret ====
 
+; Scrolls the text up or down one row (leaving a blank line)
+;
+; Args:
+;   al : 0 for down, non-zero for up
+scroll_text:
+  ; TODO: need to also maintain scroll markers...
+  push dx ; cursor position
+  push cx
+
+  ; set ah = 6 for going down; 7 for going up
+  mov ah, 6; BIOS scroll up, means make room at the bottom
+  test al, al
+  jz .down
+  ; .up:
+  inc ah ; ah = 0x7 BIOS scroll down, means make room at the top
+  .down:
+
+  ; Scroll the user code text area
+  mov al, 1 ; scroll one line
+  mov cx, MAIN_TOP_LEFT
+  mov dx, MAIN_BOTTOM_RIGHT
+  mov bh, MAIN_COLOR ; Also clear bh because it's the page number for write string below
+  int 0x10
+
+  pop cx
+  pop dx
+  ret
+
 ; Print a line from the buffer at the beginning of the current cursor row
 ;
 ; Args:
@@ -662,9 +690,11 @@ _move_up:
   dec dh
   jmp set_cursor_and_continue
 
-  .scroll_down:
+.scroll_down:
   mov al, 1
-  jmp _scroll_and_continue
+  call scroll_text
+  call print_line
+  jmp set_cursor_and_continue
 
 
 ; Move the cursor down one line and keep the same column
@@ -684,74 +714,29 @@ _move_down:
   inc dh ; Next row
   jmp set_cursor_and_continue
 
-  .scroll_up:
+.scroll_up:
   mov al, 0
-  xor cx, cx ; _scroll_and_continue should scan for the \n to find the length
-  jmp _scroll_and_continue
+  call scroll_text
 
-; Scrolls the text up or down one row printing any existing data in the text
-; buffer when it does it
-;
-; Args:
-;   al : 0 for down, non-zero for up
-;   dx : final cursor position
-;   bp : pointer to start printing from
-;   cx : number of characters to print (0 if it should scan for '\n')
-_scroll_and_continue:
-  ; TODO consider refactoring this into a call function and leave out the
-  ; printing part. Then it doesn't need all these args and move_down can just
-  ; do the scanning work after the call
-
-  push dx ; cursor position
-  push cx ; number of characters to print or 0 if we should scan
-  push bp ; string to print
-  mov bp, sp
-
-  ; set ah = 6 for going down; 7 for going up
-  mov ah, 6; BIOS scroll up, means make room at the bottom
-  test al, al
-  jz .down
-  ; .up:
-  inc ah ; ah = 0x7 BIOS scroll down, means make room at the top
-  .down:
-
-  ; Scroll the user code text area
-  mov al, 1 ; scroll one line
-  mov cx, MAIN_TOP_LEFT
-  mov dx, MAIN_BOTTOM_RIGHT
-  mov bh, MAIN_COLOR ; Also clear bh because it's the page number for write string below
-  int 0x10
-
-  ; restore the cursor position and the arguments
-  mov dx, [bp+4] ; Need the cursor row for where to print the string
-  mov cx, [bp+2]
-  mov bp, [bp]
-
-  ; If we're adding on to the end of the buffer skip all the checks below
-  cmp bp, si
-  je .nothing_to_print
-
-  cmp cx, 0
-  jne .already_know_length
-
-  ; Scan the string to find the length to print
-  ; Stop if we hit the end of the row or the end of the buffer
+  ; Scan the buffer string to find the length to print on the newly blank line
+  ; Stop if we hit the end of the row or line or the end of the buffer
+  xor cx, cx
+  push bp ; save the start of the string so we can iterate
   .find_string_length:
-  cmp byte [es:bp], `\n`
-  je .found_length
-  inc cx
-  inc bp
-
   cmp bp, si
+  je .found_length
+  cmp byte [es:bp], `\n`
   je .found_length
   cmp cx, ROW_LENGTH+1 ; we only need to know it's longer than the row
   je .found_length
-
+  inc cx
+  inc bp
   jmp .find_string_length
 
   .found_length:
+  pop bp ; restore the start of the string
   cmp cx, ROW_LENGTH
-  jle .already_know_length
+  jle .shorter_than_row
 
   ; If we had more than a row just print the row
   mov cx, ROW_LENGTH
@@ -759,19 +744,10 @@ _scroll_and_continue:
   mov ax, 0x0100
   call set_line_scroll_marker
 
-  ; restore the string to print pointer
-  mov bp, sp
-  mov bp, [bp]
+  pop bp ; restore the string to print pointer
 
-  .already_know_length:
-  add sp, 4 ; Clear the two args off the stack
-  pop dx ; restore the cursor position
+  .shorter_than_row:
   call print_line
-  jmp set_cursor_and_continue
-
-  .nothing_to_print:
-  add sp, 4
-  pop dx
   jmp set_cursor_and_continue
 
 NUM_EXTRA_SECTORS: equ ($-start_-1)/SECTOR_SIZE + 1
