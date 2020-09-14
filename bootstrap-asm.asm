@@ -338,6 +338,25 @@ print_line:
   pop dx ; restore the cursor position
   ret
 
+; Scan backwards from the current write pointer (di) to the first \n and count
+; Assumes di > 0
+;
+; Returns:
+;  - bp : pointer to the start of the current line
+;  - cx : number of characters up until the the write pointer (di)
+get_line:
+  mov bp, di
+  xor cx, cx
+  .loop:
+  cmp byte [es:bp-1], `\n`
+  je .done
+  inc cx
+  dec bp
+  test bp, bp
+  jnz .loop
+  .done:
+  ret
+
 ; Sets or clears left or right markers for horizontal line scrolling
 ; Note: This should be called with call
 ;
@@ -428,64 +447,14 @@ save_new_line:
   ; Because in replacement mode we would have to stop the cursor from moving
   ; onto the first line because you wouldn't be able to add any characters
   ; there. This conditional would be non-trivial and it's not worth bothering.
-  ; Also if we allowed consecutive new lines that would make this more
-  ; complicated.
   test di, di
   jz typing_loop
 
-  ; Disallow consecutive new lines
-  ;
-  ; Because we might have to scroll the screen more than one line at a time if
-  ; we allowed them which means I would have to refactor the scrolling and
-  ; printing code. But I'm going to change to non-wrapped lines next and we
-  ; won't need that code so it would be a waste to write it.
-  cmp byte [es:di-1], `\n`
-  je typing_loop
-
-  ; If we're scrolled to the right we have an extra space we need to remove
-  ; TODO: can this code be avoided by calling move_right?
-  cmp dl, END_COL
-  jne .not_scrolled
-
-  ; Reprint the current line up to the new \n which will go at [es:di]
-  lea bp, [di-ROW_LENGTH]
-
-  ; it's possible we're on the last column but we haven't scrolled yet
-  cmp bp, -1 ; if we are exactly ROW_LENGTH-1 chars into the buffer
-  je .not_scrolled
-  cmp byte [es:bp], `\n` ; if we have typed ROW_LENGTH-1 chars on this line
-  je .not_scrolled
-
-  ; We might need to clear the scroll marker if there was only 1 char cut off
-  cmp bp, 0
-  je .clear_marker
-  cmp byte [es:bp-1], `\n`
-  je .clear_marker
-  jmp .still_some_cut_off
-  .clear_marker:
-  ; Clear the left scroll marker
-  mov ax, 0x0001
-  call set_line_scroll_marker
-  .still_some_cut_off:
-
-  ; Reprint the current line up to the \n
-  mov cx, ROW_LENGTH
-  call print_line
-
-  ; fallthrough
-  .not_scrolled:
-
-  ; Write the new line and advance buffer pointers
   mov byte [es:di], `\n`
-  inc di
-  inc si
-  mov byte [es:di], 0 ; Clear the next byte so we can check for \n
+  dec di ; so that move_right sees our \n after inc di
+  inc si ; we're at the end of the buffer and need to make room
 
-  ; Scroll to the next line
-  mov dl, START_COL
-  mov bp, di
-  xor cx, cx
-  jmp _move_down
+  jmp move_right
 
 ; Moves the cursor left one nibble then continues typing_loop
 ;  - Saves the byte in cl when moving to a new byte, also loads the existing
@@ -560,23 +529,8 @@ move_left:
   test di, di
   jz typing_loop
 
-  ; Scan backwards to find the length of the previous string so we can print it
-  ;
-  ; Ends with:
-  ;  - bp : pointer to print the new line from
-  ;  - cx : number of characters to print
-  ;  - di : (global) next spot to write to on typing
-  mov bp, di
+  call get_line
   dec di ; Skip past the \n that caused the .prev_line call
-  xor cx, cx
-  .line_length_loop:
-  cmp byte [es:bp-1], `\n`
-  je .found_length
-  inc cx
-  dec bp
-  test bp, bp
-  jnz .line_length_loop
-  .found_length:
 
   ; Scroll the screen (and set the final cursor row position)
   cmp dh, START_ROW
@@ -588,11 +542,18 @@ move_left:
   .no_screen_scroll:
   ; Just move the cursor up
   dec dh
+  ; If the row is empty, skip it because we're in replacement mode
+  test cx, cx
+  jz .prev_line
   cmp cx, ROW_LENGTH
   jle .skip_repaint
   ; fallthrough
+  ; TODO: can we avoid redoing the above two checks after the fallthrough?
 
   .paint_row:
+  ; If the row is empty, skip it because we're in replacement mode
+  test cx, cx
+  jz .prev_line
   ; Clip the string to [:min(strlen, ROW_LENGTH)] chars at the end
   ; (the line will be scrolled all the way to the right so we type at the end)
   cmp cx, ROW_LENGTH
@@ -610,9 +571,10 @@ move_left:
   call print_line
 
   .skip_repaint:
+
   ; Set the cursor column and finally move it
   ;
-  ; Note: cl is always >= 1 because we disallowed consecutive new lines, so
+  ; Note: cl is always >= 1 because we skipped consecutive new lines, so
   ; we'll never set the cursor outside the typing area. This -1 will go away
   ; in insert mode, we'll want the cursor one past the last char not on it.
   mov dl, START_COL-1
@@ -689,18 +651,23 @@ move_right:
 
   .next_line:
 
-  ; TODO: scan backwards and repaint the current line to reset it
-  ; only if we're scrolled over. Also scroll markers maybe??
+  ; Reset the current line to show the left side if it's longer than the screen
+  call get_line
+  cmp cx, ROW_LENGTH
+  jl .skip_resetting_line
+  ; Note: equal is a special case for save_new_line in replace mode to remove
+  ; the extra space when the line is the one the user is typing in. Otherwise
+  ; we could just skip_resetting_line when equal.
+  je .skip_right_marker
+  mov ax, 0x0100 ; set to on ; right margin
+  call set_line_scroll_marker
+  .skip_right_marker:
+  mov ax, 0x0001 ; set to off ; left margin
+  call set_line_scroll_marker
+  mov cx, ROW_LENGTH
+  call print_line
+  .skip_resetting_line:
 
-  ; Skip the \n char
-  ; We know if we found a new line there is space for one more char
-  ; i.e. di < si
-  inc di
-
-  mov dl, START_COL
-  mov bp, di ; the start of the string to print from on the new line
-  ; We don't always have to scan the string (if we're not scrolling the screen)
-  ; so not scanning the string here saves the work sometimes.
   ;jmp _move_down fallthrough
 
 ; Move the cursor down one line and keep the same column
@@ -713,12 +680,22 @@ move_right:
 ; Args:
 ;   dl : final cursor column
 ;   bp : pointer to start printing from
-_move_down:
+.move_down:
+  ; Skip the \n char
+  ; We know if we found a new line there is space for one more char
+  ; i.e. di < si
+  inc di
+
   cmp dh, END_ROW ; if we're at the bottom
   je .scroll_up
 
   inc dh ; Next row
-  jmp set_cursor_and_continue
+
+  ; Skip over consecutive empty lines because replacement mode
+  cmp byte [es:di], `\n`
+  je .move_down
+
+  jmp .done
 
 .scroll_up:
   mov al, 0
@@ -727,7 +704,7 @@ _move_down:
   ; Scan the buffer string to find the length to print on the newly blank line
   ; Stop if we hit the end of the row or line or the end of the buffer
   xor cx, cx
-  push bp ; save the start of the string so we can iterate
+  mov bp, di
   .find_string_length:
   cmp bp, si
   je .found_length
@@ -740,7 +717,7 @@ _move_down:
   jmp .find_string_length
 
   .found_length:
-  pop bp ; restore the start of the string
+  mov bp, di ; restore the start of the string
   cmp cx, ROW_LENGTH
   jle .shorter_than_row
 
@@ -750,10 +727,15 @@ _move_down:
   mov ax, 0x0100
   call set_line_scroll_marker
 
-  pop bp ; restore the string to print pointer
-
   .shorter_than_row:
+  ; Skip over consecutive new lines because replacement mode
+  cmp byte [es:bp], `\n`
+  je .move_down
+  .print:
   call print_line
+
+.done:
+  mov dl, START_COL
   jmp set_cursor_and_continue
 
 NUM_EXTRA_SECTORS: equ ($-start_-1)/SECTOR_SIZE + 1
