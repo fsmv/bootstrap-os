@@ -54,7 +54,7 @@ int 0x10
 
 ; Color byte is: bg-intensity,bg-r,bg-g,bg-b ; fg-intensity,fg-r,fg-g,fg-b
 
-; Set cursor shape to an underline
+; Set cursor type to an underline
 mov ax, 0x0100
 mov cx, 0x0607
 int 0x10
@@ -218,6 +218,20 @@ BOOT_DISK: db 0x00 ; value is filled first thing
 
 %include "util/bootsect-footer.asm"
 
+; Optionally change the keyboard layout.
+;
+; To use a layout: look in the file you want for the %ifdef label and -D define
+; it on the commandline. Ex: ./boot bootstrap-asm.asm -DDVORAK
+;
+; TODO: is the default layout qwerty or hardware specific? My map is qwerty->dvorak only
+;
+; It's easy to make a new layout!
+;
+; Simply pull up an ascii table (my favorite is `man ascii`) then type it out
+; starting from ' ' to `~` using your qwerty keyboard labels using the desired
+; layout in your OS (note: both \ and ` must be escaped for the assembler)
+%include "keyboard-layouts/dvorak.asm"
+
 start_:
 
 ; Set cursor position to the start
@@ -271,6 +285,17 @@ typing_loop:
   jmp typing_loop ; Doesn't match anything above
 
 ; ==== typing_loop helpers that use ret ====
+
+%ifdef CONVERT_LAYOUT
+; Takes an ascii char in al (typed in querty) and converts it to dvorak
+; Assumes al >= ' ' && al <= '~'
+convert_keyboard_layout:
+  xor bh, bh
+  mov bl, al
+  sub bl, ' '
+  mov al, [bx + keyboard_map]
+  ret
+%endif
 
 ; Scrolls the text up or down one row (leaving a blank line)
 ;
@@ -406,6 +431,12 @@ set_line_scroll_marker:
 
 ; Takes an ascii char in al then saves and prints it and continues typing_loop
 save_and_print_char:
+
+; Convert the keyboard layout if one is %included
+%ifdef CONVERT_LAYOUT
+  call convert_keyboard_layout
+%endif
+
   ; Print the ascii char (in al)
   mov ah, 0x0E ; Write teletype character
   xor bh, bh
