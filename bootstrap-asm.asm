@@ -593,8 +593,10 @@ move_left:
   add bp, cx
   sub bp, ROW_LENGTH
   mov cx, ROW_LENGTH ; we're printing ROW_LENGTH characters
-  ; Set the left side scroll marker since we have some cut off to the left
-  mov ax, 0x0101
+  ; Set the scroll markers since we have some cut off to the left
+  mov ax, 0x0101 ; set to on ; left margin
+  call set_line_scroll_marker
+  mov ax, 0x0000 ; set to off ; right margin
   call set_line_scroll_marker
   ; fallthrough
   .no_clipping:
