@@ -176,8 +176,13 @@ debug_print_hex:
 
   add dh, al ; row += the row to print on
 
+  ; Reset the count so we overwrite at the beginning
   cmp dh, START_ROW
-  je .no_more_room
+  jne .no_reset
+  mov byte [num_debug_prints], 0
+  xor ax, ax
+  xor dh, dh
+  .no_reset:
 
   inc byte [num_debug_prints] ; remember that we printed
 
@@ -197,8 +202,6 @@ debug_print_hex:
   call print_hex
   ; don't bother printing a space because the margin is blank
 
-  ; fallthrough
-.no_more_room:
   ; reset the cursor
   pop dx
   mov ah, 0x02
