@@ -309,268 +309,14 @@ typing_loop:
 
   jmp typing_loop ; Doesn't match anything above
 
-; ==== typing_loop helpers that use ret ====
-
-%ifdef CONVERT_LAYOUT
-; Takes an ascii char in al (typed in querty) and converts it to dvorak
-; Assumes al >= ' ' && al <= '~'
-convert_keyboard_layout:
-  xor bh, bh
-  mov bl, al
-  sub bl, ' '
-  mov al, [bx + keyboard_map]
-  ret
-%endif
-
-; Scrolls the text up or down one row (leaving a blank line)
-;
-; Also when scrolling up it only scrolls starting at the current line to allow
-; for clearing space when inserting a new line in the middle (this could be done
-; for up but isn't needed)
-;
-; Args:
-;   al : 0 for down, non-zero for up
-scroll_text:
-  push dx ; cursor position
-  push cx
-
-  ; set ah = 6 for going down; 7 for going up
-  mov ah, 6; BIOS scroll up, means make room at the bottom
-  mov ch, START_ROW ; all scrolling uses this row for .down
-  test al, al
-  jz .down
-  ; .up:
-  inc ah ; set the BIOS command for up
-  mov ch, dh ; When scrolling up, start at the cursor row
-  .down:
-
-  ; Scroll the user code text area
-  mov al, 1 ; scroll one line
-  mov cl, START_COL
-  mov dx, MAIN_BOTTOM_RIGHT
-  mov bh, MAIN_COLOR ; Also clear bh because it's the page number for write string below
-  int 0x10
-
-  ; Scroll the left side scroll markers (even if there's nothing there)
-  mov al, 1 ; scroll one line
-  mov cl, START_COL - 1 ; left one column from the upper left corner (columns are the low bits, so we can save an instruction)
-  mov dh, END_ROW
-  mov dl, START_COL-1
-  mov bh, BORDER_COLOR ; Also clear bh because it's the page number for write string below
-  int 0x10
-
-  ; Scroll the right side scroll markers
-  ; Note: I reset some registers to the value they should still have
-  ;       just in case the BIOS clobbers them
-  mov al, 1 ; scroll one line
-  mov cl, END_COL+1
-  mov dh, END_ROW
-  mov dl, END_COL+1
-  mov bh, BORDER_COLOR ; Also clear bh because it's the page number for write string below
-  int 0x10
-
-  pop cx
-  pop dx
-  ret
-
-; Print a line from the buffer at the beginning of the current cursor row
-; Move the VGA cursor to the end of the print
-;
-; Args:
-;   bp : pointer to print from
-;   cx : number of characters to print
-;   dx : cursor position to print from
-print_line:
-  ; Print the line from the buffer
-  ; bp is already the pointer to print from
-  ; cx is number of chars to print
-  ; dx is the cursor position to print at
-  xor bh, bh ; page number 0
-  mov bl, MAIN_COLOR
-  mov ax, 0x1301     ; Write String, with moving the cursor
-  int 0x10
-  ret
-
-; Scan backwards to the first \n and count the length
-;
-; Args:
-;  - bp : pointer to scan starting from
-; Returns:
-;  - bp : pointer to the start of the current line
-;  - cx : number of characters up until the the write pointer (di)
-scan_backward:
-  xor cx, cx
-  ; Check if we started on a \n
-  cmp byte [es:bp], `\n`
-  je .done
-  inc cx
-
-  .loop:
-  test bp, bp
-  jz .done
-  cmp byte [es:bp-1], `\n`
-  je .done
-  dec bp
-  inc cx
-  jmp .loop
-
-  .done:
-  ret
-
-; Scan forward counting string length for printing the row
-; Stop at '\n' or the end of the buffer
-;
-; Args:
-;  - bp : start pointer to scan from (restored at the end)
-; Returns:
-;  - cx : min(strlen(bp), ROW_LENGTH+1)
-scan_forward:
-  push bp
-  xor cx, cx
-  .find_string_length:
-  cmp byte [es:bp], 0
-  je .found_length
-  cmp byte [es:bp], `\n`
-  je .found_length
-  inc cx
-  inc bp
-  jmp .find_string_length
-
-  .found_length:
-  pop bp ; restore the start of the string
-  ret
-
-; Sets or clears left or right markers for horizontal line scrolling
-; Note: This should be called with call
-;
-; Args:
-;   ah : 1 set the marker, 0 clear the marker
-;   al : 0 for right side, 1 for left side
-;   dx : cursor position (sets the marker on the cursor row)
-set_line_scroll_marker:
-  push dx
-  push cx
-
-  ; Set the column to print at and the character to print based on al
-  test al, al
-  jz .right_side
-  ; .left_side:
-  mov dl, START_COL-1
-  mov al, '>'
-  jmp .check_clear
-  .right_side:
-  mov dl, END_COL+1
-  mov al, '<'
-  .check_clear:
-
-  ; Clear the marker depending on ah
-  test ah, ah
-  jnz .no_clear_marker
-  mov al, ' ' ; clear the marker by printing a space
-  .no_clear_marker:
-
-  ; Move the cursor to the margin
-  mov ah, 0x02
-  xor bh, bh ; page number (for both calls)
-  int 0x10
-
-  ; Print the character
-  ; Note: don't use a single Write String call because we'd have to change es
-  mov ah, 0x09
-  mov cx, 1 ; number of characters to print
-  mov bl, BORDER_COLOR
-  int 0x10
-
-  pop cx
-  pop dx
-  ret
-
-; Reset the buffer gap only if needed.
-;
-; In the middle of the buffer it does a copy from es:si to the end, but at the
-; end we can do it without a copy.
-;
-; Clobbers bp,cx (this is called at the beginning of typing_loop helpers only)
-maybe_reset_gap:
-  ; If we're at the end of the buffer we can reset the gap without a copy
-  cmp byte [es:si], 0
-  jne .not_at_end
-
-  lea si, [di+GAP_SIZE] ; reset to the default gap size
-
-  ; Clip to USER_CODE_MAX
-  cmp si, USER_CODE_MAX
-  jle .still_have_room
-  mov si, USER_CODE_MAX
-  .still_have_room:
-
-  mov byte [es:si], 0 ; keep the string null-terminated
-  jmp .done
-
-.not_at_end:
-  ; If we run out of gap, we have to do a copy to reset it
-  cmp di, si
-  jne .done
-
-  ; Scan forward to find the \0 (we know we're not already on it)
-  mov bp, si ; Save the beginning
-  .scan_forward:
-  inc si
-  cmp byte [es:si], 0
-  jne .scan_forward
-
-  ; Copy from si to si+GAP_SIZE in a loop in reverse order if there's space
-  cmp si, USER_CODE_MAX-GAP_SIZE
-  jg .no_more_room ; if equal we still copy because si is on the \0 and we can't loose it
-
-  ; We're copying 2 bytes at a time so we need to fix the alignment
-  ; (we know there's >= 2 chars because if it was only \0 or we'd be in the other branch)
-  dec si ; start on the char before the last so we can copy 2
-  mov bx, si
-  sub bx, bp ; bx == num chars - 2 (since the range is [bp, si+1] inclusive)
-  test bx, 1
-  jz .shift_buffer ; if the number of chars is even, skip the extra byte
-  ; Copy the first byte when there's an odd number of characters
-  mov byte al, [es:si+1] ; +1 since we started on the second-to-last char
-  mov byte [es:si+GAP_SIZE+1], al
-  dec si ; now on the third-to-last char (3 is the first odd length)
-  .shift_buffer:
-  mov word ax, [es:si]
-  mov word [es:si+GAP_SIZE], ax
-  cmp si, bp
-  je .end_shift
-  sub si, 2
-  jmp .shift_buffer
-  .end_shift:
-
-  add si, GAP_SIZE ; set the final position (it was left on the original location)
-  jmp .done
-
-.no_more_room:
-  ; Print a warning message because we can't allow more typing now
-  ; TODO: remove this message on backspace
-  push dx
-  ; The interrupt reads from es:bp and we need to read the error from the code
-  mov ax, cs
-  mov es, ax
-
-  mov bp, no_more_room_msg
-  mov cx, no_more_room_msg_len
-  mov dx, MAIN_TOP_LEFT-0x0100 ; one line above the top left corner
-  xor bh, bh ; page number 0
-  mov bl, ERROR_COLOR
-  mov ax, 0x1301 ; write string without moving the cursor
-  int 0x10
-
-  ; Reset es and the cursor position
-  mov ax, USER_CODE_LOC
-  mov es, ax
-  pop dx
-  ; fallthrough
-  .done:
-  ret
-
 ; ==== typing_loop internal helpers that continue the loop ====
+
+; Moves the cursor to the value in dx and continues typing_loop
+set_cursor_and_continue:
+  mov ah, 0x02
+  xor bh, bh
+  int 0x10 ; dx is the cursor position
+  jmp typing_loop
 
 ; Takes an ascii char in al then saves and prints it and continues typing_loop
 save_and_print_char:
@@ -622,13 +368,6 @@ save_and_print_char:
   ; The cursor did move from the typing interrupt but lets just set it anyway,
   ; if we didn't the cursor breaks when putting in a debug print in some places
   jmp set_cursor_and_continue
-
-; Moves the cursor to the value in dx and continues typing_loop
-set_cursor_and_continue:
-  mov ah, 0x02
-  xor bh, bh
-  int 0x10 ; dx is the cursor position
-  jmp typing_loop
 
 save_new_line:
   cmp di, si ; disallow typing anywhere when we're out of buffer space
@@ -728,7 +467,6 @@ save_new_line:
   call print_line
 
   jmp set_cursor_and_continue
-
 
 ; Moves the cursor left one nibble then continues typing_loop
 ;  - Saves the byte in cl when moving to a new byte, also loads the existing
@@ -1001,5 +739,266 @@ _next_line:
   ; fallthrough
 .done:
   jmp set_cursor_and_continue
+
+; ==== typing_loop helpers that use ret ====
+
+%ifdef CONVERT_LAYOUT
+; Takes an ascii char in al (typed in querty) and converts it to dvorak
+; Assumes al >= ' ' && al <= '~'
+convert_keyboard_layout:
+  xor bh, bh
+  mov bl, al
+  sub bl, ' '
+  mov al, [bx + keyboard_map]
+  ret
+%endif
+
+; Scrolls the text up or down one row (leaving a blank line)
+;
+; Also when scrolling up it only scrolls starting at the current line to allow
+; for clearing space when inserting a new line in the middle (this could be done
+; for up but isn't needed)
+;
+; Args:
+;   al : 0 for down, non-zero for up
+scroll_text:
+  push dx ; cursor position
+  push cx
+
+  ; set ah = 6 for going down; 7 for going up
+  mov ah, 6; BIOS scroll up, means make room at the bottom
+  mov ch, START_ROW ; all scrolling uses this row for .down
+  test al, al
+  jz .down
+  ; .up:
+  inc ah ; set the BIOS command for up
+  mov ch, dh ; When scrolling up, start at the cursor row
+  .down:
+
+  ; Scroll the user code text area
+  mov al, 1 ; scroll one line
+  mov cl, START_COL
+  mov dx, MAIN_BOTTOM_RIGHT
+  mov bh, MAIN_COLOR ; Also clear bh because it's the page number for write string below
+  int 0x10
+
+  ; Scroll the left side scroll markers (even if there's nothing there)
+  mov al, 1 ; scroll one line
+  mov cl, START_COL - 1 ; left one column from the upper left corner (columns are the low bits, so we can save an instruction)
+  mov dh, END_ROW
+  mov dl, START_COL-1
+  mov bh, BORDER_COLOR ; Also clear bh because it's the page number for write string below
+  int 0x10
+
+  ; Scroll the right side scroll markers
+  ; Note: I reset some registers to the value they should still have
+  ;       just in case the BIOS clobbers them
+  mov al, 1 ; scroll one line
+  mov cl, END_COL+1
+  mov dh, END_ROW
+  mov dl, END_COL+1
+  mov bh, BORDER_COLOR ; Also clear bh because it's the page number for write string below
+  int 0x10
+
+  pop cx
+  pop dx
+  ret
+
+; Print a line from the buffer at the beginning of the current cursor row
+; Move the VGA cursor to the end of the print
+;
+; Args:
+;   bp : pointer to print from
+;   cx : number of characters to print
+;   dx : cursor position to print from
+print_line:
+  ; Print the line from the buffer
+  ; bp is already the pointer to print from
+  ; cx is number of chars to print
+  ; dx is the cursor position to print at
+  xor bh, bh ; page number 0
+  mov bl, MAIN_COLOR
+  mov ax, 0x1301     ; Write String, with moving the cursor
+  int 0x10
+  ret
+
+; Scan backwards to the first \n and count the length
+;
+; Args:
+;  - bp : pointer to scan starting from
+; Returns:
+;  - bp : pointer to the start of the current line
+;  - cx : number of characters up until the the write pointer (di)
+scan_backward:
+  xor cx, cx
+  ; Check if we started on a \n
+  cmp byte [es:bp], `\n`
+  je .done
+  inc cx
+
+  .loop:
+  test bp, bp
+  jz .done
+  cmp byte [es:bp-1], `\n`
+  je .done
+  dec bp
+  inc cx
+  jmp .loop
+
+  .done:
+  ret
+
+; Scan forward counting string length for printing the row
+; Stop at '\n' or the end of the buffer
+;
+; Args:
+;  - bp : start pointer to scan from (restored at the end)
+; Returns:
+;  - cx : min(strlen(bp), ROW_LENGTH+1)
+scan_forward:
+  push bp
+  xor cx, cx
+  .find_string_length:
+  cmp byte [es:bp], 0
+  je .found_length
+  cmp byte [es:bp], `\n`
+  je .found_length
+  inc cx
+  inc bp
+  jmp .find_string_length
+
+  .found_length:
+  pop bp ; restore the start of the string
+  ret
+
+; Sets or clears left or right markers for horizontal line scrolling
+; Note: This should be called with call
+;
+; Args:
+;   ah : 1 set the marker, 0 clear the marker
+;   al : 0 for right side, 1 for left side
+;   dx : cursor position (sets the marker on the cursor row)
+set_line_scroll_marker:
+  push dx
+  push cx
+
+  ; Set the column to print at and the character to print based on al
+  test al, al
+  jz .right_side
+  ; .left_side:
+  mov dl, START_COL-1
+  mov al, '>'
+  jmp .check_clear
+  .right_side:
+  mov dl, END_COL+1
+  mov al, '<'
+  .check_clear:
+
+  ; Clear the marker depending on ah
+  test ah, ah
+  jnz .no_clear_marker
+  mov al, ' ' ; clear the marker by printing a space
+  .no_clear_marker:
+
+  ; Move the cursor to the margin
+  mov ah, 0x02
+  xor bh, bh ; page number (for both calls)
+  int 0x10
+
+  ; Print the character
+  ; Note: don't use a single Write String call because we'd have to change es
+  mov ah, 0x09
+  mov cx, 1 ; number of characters to print
+  mov bl, BORDER_COLOR
+  int 0x10
+
+  pop cx
+  pop dx
+  ret
+
+; Reset the buffer gap only if needed.
+;
+; In the middle of the buffer it does a copy from es:si to the end, but at the
+; end we can do it without a copy.
+;
+; Clobbers bp,cx (this is called at the beginning of typing_loop helpers only)
+maybe_reset_gap:
+  ; If we're at the end of the buffer we can reset the gap without a copy
+  cmp byte [es:si], 0
+  jne .not_at_end
+
+  lea si, [di+GAP_SIZE] ; reset to the default gap size
+
+  ; Clip to USER_CODE_MAX
+  cmp si, USER_CODE_MAX
+  jle .still_have_room
+  mov si, USER_CODE_MAX
+  .still_have_room:
+
+  mov byte [es:si], 0 ; keep the string null-terminated
+  jmp .done
+
+.not_at_end:
+  ; If we run out of gap, we have to do a copy to reset it
+  cmp di, si
+  jne .done
+
+  ; Scan forward to find the \0 (we know we're not already on it)
+  mov bp, si ; Save the beginning
+  .scan_forward:
+  inc si
+  cmp byte [es:si], 0
+  jne .scan_forward
+
+  ; Copy from si to si+GAP_SIZE in a loop in reverse order if there's space
+  cmp si, USER_CODE_MAX-GAP_SIZE
+  jg .no_more_room ; if equal we still copy because si is on the \0 and we can't loose it
+
+  ; We're copying 2 bytes at a time so we need to fix the alignment
+  ; (we know there's >= 2 chars because if it was only \0 or we'd be in the other branch)
+  dec si ; start on the char before the last so we can copy 2
+  mov bx, si
+  sub bx, bp ; bx == num chars - 2 (since the range is [bp, si+1] inclusive)
+  test bx, 1
+  jz .shift_buffer ; if the number of chars is even, skip the extra byte
+  ; Copy the first byte when there's an odd number of characters
+  mov byte al, [es:si+1] ; +1 since we started on the second-to-last char
+  mov byte [es:si+GAP_SIZE+1], al
+  dec si ; now on the third-to-last char (3 is the first odd length)
+  .shift_buffer:
+  mov word ax, [es:si]
+  mov word [es:si+GAP_SIZE], ax
+  cmp si, bp
+  je .end_shift
+  sub si, 2
+  jmp .shift_buffer
+  .end_shift:
+
+  add si, GAP_SIZE ; set the final position (it was left on the original location)
+  jmp .done
+
+.no_more_room:
+  ; Print a warning message because we can't allow more typing now
+  ; TODO: remove this message on backspace
+  push dx
+  ; The interrupt reads from es:bp and we need to read the error from the code
+  mov ax, cs
+  mov es, ax
+
+  mov bp, no_more_room_msg
+  mov cx, no_more_room_msg_len
+  mov dx, MAIN_TOP_LEFT-0x0100 ; one line above the top left corner
+  xor bh, bh ; page number 0
+  mov bl, ERROR_COLOR
+  mov ax, 0x1301 ; write string without moving the cursor
+  int 0x10
+
+  ; Reset es and the cursor position
+  mov ax, USER_CODE_LOC
+  mov es, ax
+  pop dx
+  ; fallthrough
+  .done:
+  ret
 
 NUM_EXTRA_SECTORS: equ ($-start_-1)/SECTOR_SIZE + 1
