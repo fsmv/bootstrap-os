@@ -761,14 +761,15 @@ move_left:
   .paint_row:
   ; Clip the string to [:min(strlen, ROW_LENGTH-1)] chars at the end
   ; (-1 to leave a space for the user to type at the end)
+  mov dl, START_COL ; print from the beginning of the line
   cmp cx, 0
   je .skip_repaint
   cmp cx, ROW_LENGTH-1
   jle .no_clipping
   ; Move the print pointer to the end of the line minus ROW_LENGTH-1
   add bp, cx
-  mov cx, ROW_LENGTH-1 ; num chars to print
-  sub bp, cx
+  mov cx, ROW_LENGTH ; num chars to print
+  sub bp, ROW_LENGTH-1 ; leave a space at the end
 
   ; Put a space in the buffer so we print it and overwrite on the screen the
   ; last char the user typed.
@@ -779,15 +780,16 @@ move_left:
   call set_line_scroll_marker
   mov ax, 0x0000 ; set to off ; right margin
   call set_line_scroll_marker
-  ; fallthrough
+
+  call print_line
+  dec cx ; so we set the cursor after the last char not after the space
+  jmp .skip_repaint
 
   .no_clipping:
-  ; Repaint the previous line
-  mov dl, START_COL ; print from the beginning of the line
   call print_line
+  ; fallthrough
 
   .skip_repaint:
-
   ; Set the cursor column and finally move it
   mov dl, START_COL
   add dl, cl
