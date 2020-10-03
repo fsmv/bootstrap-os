@@ -15,8 +15,10 @@
 %define RIGHT_ARROW 0x4D00
 %define EOT 0x2004 ; Ctrl+D
 
+; Color byte is: bg-intensity,bg-r,bg-g,bg-b ; fg-intensity,fg-r,fg-g,fg-b
 %define MAIN_COLOR 0x17
 %define BORDER_COLOR 0x97
+%define ERROR_COLOR 0x47
 
 ; Note that the code requires that there's at least one character of border
 %define MAIN_TOP_LEFT 0x0204 ; row = 2,  col = 2
@@ -64,7 +66,7 @@ mov ax, 0x1103
 mov bl, 0
 int 0x10
 
-; Color byte is: bg-intensity,bg-r,bg-g,bg-b ; fg-intensity,fg-r,fg-g,fg-b
+; Color byte is now: bg-intensity,bg-r,bg-g,bg-b ; fg-intensity,fg-r,fg-g,fg-b
 
 ; Set cursor type to an underline
 mov ax, 0x0100
@@ -246,6 +248,9 @@ BOOT_DISK: db 0x00 ; value is filled first thing
 ; starting from ' ' to `~` using your qwerty keyboard labels using the desired
 ; layout in your OS (note: both \ and ` must be escaped for the assembler)
 %include "keyboard-layouts/dvorak.asm"
+
+no_more_room_msg: db `No more room in the code buffer`
+no_more_room_msg_len: equ $-no_more_room_msg
 
 start_:
 
@@ -480,6 +485,12 @@ set_line_scroll_marker:
   pop dx
   ret
 
+; Reset the buffer gap only if needed.
+;
+; In the middle of the buffer it does a copy from es:si to the end, but at the
+; end we can do it without a copy.
+;
+; Clobbers bp,cx (this is called at the beginning of typing_loop helpers only)
 maybe_reset_gap:
   ; If we're at the end of the buffer we can reset the gap without a copy
   cmp byte [es:si], 0
@@ -494,26 +505,77 @@ maybe_reset_gap:
   .still_have_room:
 
   mov byte [es:si], 0 ; keep the string null-terminated
+  jmp .done
 
-  .not_at_end:
-
+.not_at_end:
   ; If we run out of gap, we have to do a copy to reset it
   cmp di, si
-  jne .skip_resize_gap
-  ; TODO
+  jne .done
 
-  ; Is there GAP_SIZE space after the \0 up until USER_CODE_MAX?
+  ; Scan forward to find the \0 (we know we're not already on it)
+  mov bp, si ; Save the beginning
+  .scan_forward:
+  inc si
+  cmp byte [es:si], 0
+  jne .scan_forward
 
-  ; Copy from si to si+GAP_SIZE in a loop in reverse order
+  ; Copy from si to si+GAP_SIZE in a loop in reverse order if there's space
+  cmp si, USER_CODE_MAX-GAP_SIZE
+  jg .no_more_room ; if equal we still copy because si is on the \0 and we can't loose it
 
-  .skip_resize_gap:
+  ; We're copying 2 bytes at a time so we need to fix the alignment
+  ; (we know there's >= 2 chars because if it was only \0 or we'd be in the other branch)
+  dec si ; start on the char before the last so we can copy 2
+  mov bx, si
+  sub bx, bp ; bx == num chars - 2 (since the range is [bp, si+1] inclusive)
+  test bx, 1
+  jz .shift_buffer ; if the number of chars is even, skip the extra byte
+  ; Copy the first byte when there's an odd number of characters
+  mov byte al, [es:si+1] ; +1 since we started on the second-to-last char
+  mov byte [es:si+GAP_SIZE+1], al
+  dec si ; now on the third-to-last char (3 is the first odd length)
+  .shift_buffer:
+  mov word ax, [es:si]
+  mov word [es:si+GAP_SIZE], ax
+  cmp si, bp
+  je .end_shift
+  sub si, 2
+  jmp .shift_buffer
+  .end_shift:
 
+  add si, GAP_SIZE ; set the final position (it was left on the original location)
+  jmp .done
+
+.no_more_room:
+  ; Print a warning message because we can't allow more typing now
+  ; TODO: remove this message on backspace
+  push dx
+  ; The interrupt reads from es:bp and we need to read the error from the code
+  mov ax, cs
+  mov es, ax
+
+  mov bp, no_more_room_msg
+  mov cx, no_more_room_msg_len
+  mov dx, MAIN_TOP_LEFT-0x0100 ; one line above the top left corner
+  xor bh, bh ; page number 0
+  mov bl, ERROR_COLOR
+  mov ax, 0x1301 ; write string without moving the cursor
+  int 0x10
+
+  ; Reset es and the cursor position
+  mov ax, USER_CODE_LOC
+  mov es, ax
+  pop dx
+  ; fallthrough
+  .done:
   ret
 
 ; ==== typing_loop internal helpers that continue the loop ====
 
 ; Takes an ascii char in al then saves and prints it and continues typing_loop
 save_and_print_char:
+  cmp di, si ; disallow typing anywhere when we're out of buffer space
+  je typing_loop
   cmp di, USER_CODE_MAX ; Leave a \0 at the end
   je typing_loop
 
@@ -569,7 +631,9 @@ set_cursor_and_continue:
   jmp typing_loop
 
 save_new_line:
-  cmp di, USER_CODE_MAX
+  cmp di, si ; disallow typing anywhere when we're out of buffer space
+  je typing_loop
+  cmp di, USER_CODE_MAX ; Leave a \0 at the end
   je typing_loop
 
   ; Write the `\n` into the buffer
@@ -803,16 +867,24 @@ move_right:
 
   ; Stop the cursor at the end of the user's code
   cmp byte [es:si], 0
-  je typing_loop ; do nothing if we're already at the end
+  je typing_loop
 
   mov byte al, [es:si]
   mov byte [es:di], al
   inc di
 
+  ; Pretty sure this will never happen because [es:USER_CODE_MAX] is always \0
+  ; when we run out of buffer space. But why depend on having the above check?
   cmp si, USER_CODE_MAX
   je .buffer_running_out
   inc si
   .buffer_running_out:
+
+  ; If we just hit the end for the first time, do a free gap reset
+  cmp byte [es:si], 0
+  jne .no_reset_gap ; We don't want to copy every time we move the cursor
+  call maybe_reset_gap ; This will do the check again and take the no-copy path
+  .no_reset_gap:
 
   ; Move the cursor to the next line once we're past the \n so we can append
   ; (remember, di is garbarge space and di-1 is the character before the cursor)
