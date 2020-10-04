@@ -454,7 +454,7 @@ save_new_line:
   mov bx, cx ; move the line length to bx so we can put the + in the cmp
   cmp byte [es:bx+si], 0 ; if this is the last line, we already have space
   je .no_scroll
-  mov al, 1
+  mov al, 1 ; shift the text down to leave a space
   call scroll_text
   .no_scroll:
   ; fallthrough
@@ -479,7 +479,7 @@ backspace:
   jz typing_loop
 
   cmp byte [es:di-1], `\n` ; check the char we just "deleted" (di-1 is usually the char before the cursor)
-  je .join_lines
+  je _join_lines
 
   ; Don't let the user delete a character they can't see (unless it's \n).
   ; This also avoids requiring us to scroll_line_left inside backspace
@@ -537,18 +537,101 @@ backspace:
 
   jmp set_cursor_and_continue
 
-.join_lines:
-  ; TODO
-  ; dec di ; delete the char by pushing it into the gap
+_join_lines:
+  dec di ; delete the char by pushing it into the gap
 
-  ; Clear the current line
-  ; Scroll the text below up
+  ; Scroll the text below up (which clears the current line & markers for free)
+  mov al, 0 ; shift the text up to cover the current line
+  call scroll_text
 
-  ; jmp _prev_line, but we can't skip_repaint when we are shorter than the row
-  ; Could detect if we were called from here or move_left with cmp [es:si], `\n`
-  ; Also we want to leave the cursor in the middle where it was...
+  dec dh ; Move the cursor onto the prev line (must be after scrolling)
 
-  jmp typing_loop
+  ; Repaint the bottom row if needed
+  push dx
+  ; Note: the first iteration will just be the tail of the new joined line
+  mov bp, si
+  xor cx, cx ; make the add do nothing the first time
+  .next_line_loop:
+
+  add bp, cx ; skip to the line ending from the previous scan_forward
+  cmp byte [es:bp], 0
+  je .no_line_to_print ; we only stop here if we didn't hit the END_ROW
+
+  inc bp ; skip the \n to scan the next line
+  call scan_forward ; inlining this wouldn't help much, we still need to save bp
+
+  inc dh
+  cmp dh, END_ROW
+  jne .next_line_loop
+
+  call print_line ; if we hit the end row, paint the new last screen line
+  ; fallthrough
+  .no_line_to_print:
+  pop dx
+
+  ; Need to skip scan_backward if we're at di == 0 because we can't check di-1
+  xor cx, cx ; if the check below passes, we have length 0
+  test di, di
+  jz .print_the_tail
+
+  ; Setup the new current line (the one above)
+  lea bp, [di-1]
+  call scan_backward
+
+  cmp cx, ROW_LENGTH
+  jae .shift_line_right
+.print_the_tail:
+  ; set the cursor column to one past the last char on the prev line
+  mov dl, START_COL
+  add dl, cl
+
+  ; Find the length of the new tail
+  mov bp, si
+  call scan_forward
+
+  ; Clip the printing to the end of the row
+  ; bx = remaining space in the row from the current cursor position
+  mov bx, (ROW_LENGTH+START_COL)
+  sub bl, dl
+  cmp cx, bx
+  jb .no_clipping
+  mov cx, bx
+
+  mov ax, 0x0100 ; set to on ; right margin
+  call set_line_scroll_marker
+  .no_clipping:
+
+  call print_line
+  jmp set_cursor_and_continue
+
+.shift_line_right:
+  ; Copy the last char in the row into the gap so we can print it
+  mov byte al, [es:si]
+  mov byte [es:di], al
+
+  ; If we joined an empty line, we need to print a space
+  ; Note: this is the garbage gap space so no need to restore the ending
+  cmp byte [es:di], `\n`
+  je .space
+  cmp byte [es:di], 0
+  je .space
+  jmp .no_space
+  .space:
+  mov byte [es:di], ' '
+  ; If this happened we have nothing cut off, otherwise we just keep the
+  ; existing marker (we know the line had some cut off on the right before this)
+  mov ax, 0x0000 ; set to off ; right margin
+  call set_line_scroll_marker
+  .no_space:
+
+  mov dl, START_COL ; print from the start column
+  mov bp, di
+  sub bp, ROW_LENGTH-1
+  mov cx, ROW_LENGTH
+  call print_line
+  mov dl, END_COL ; leave the cursor on the last char (first from the joined line)
+
+  jmp set_cursor_and_continue
 
 ; Moves the cursor left one nibble then continues typing_loop
 ;  - Saves the byte in cl when moving to a new byte, also loads the existing
@@ -608,7 +691,7 @@ _scroll_line_left:
 
 _prev_line:
   xor cx, cx ; line length is 0 if we're at di==0
-  test di, di ; make room if the first char is \n
+  test di, di ; skip scanning if the first char is \n
   jz .move_up
 
   lea bp, [di-1] ; scan from the char before the \n
@@ -831,27 +914,25 @@ convert_keyboard_layout:
   ret
 %endif
 
-; Scrolls the text up or down one row (leaving a blank line)
-;
-; Also when scrolling up it only scrolls starting at the current line to allow
-; for clearing space when inserting a new line in the middle (this could be done
-; for up but isn't needed)
+; Shifts the text up or down one row in a block (leaving a blank line),
+; starting at the current cursor line (used to clear a line for save_new_line or
+; join lines in backspace)
 ;
 ; Args:
-;   al : 0 for down, non-zero for up
+;   al : 0 for up, non-zero for down
 scroll_text:
   push dx ; cursor position
   push cx
 
-  ; set ah = 6 for going down; 7 for going up
+  ; set ah = 6 for going up; 7 for going down
   mov ah, 6; BIOS scroll up, means make room at the bottom
-  mov ch, START_ROW ; all scrolling uses this row for .down
   test al, al
-  jz .down
-  ; .up:
-  inc ah ; set the BIOS command for up
-  mov ch, dh ; When scrolling up, start at the cursor row
-  .down:
+  jz .up
+  ; .down:
+  inc ah ; set the BIOS command for down
+  .up:
+
+  mov ch, dh ; start at the cursor row for all 3 (and go until the bottom)
 
   ; Scroll the user code text area
   mov al, 1 ; scroll one line
@@ -882,7 +963,7 @@ scroll_text:
   pop dx
   ret
 
-; Print a line from the buffer at the beginning of the current cursor row
+; Print a line from the buffer at the starting at the current cursor position
 ; Move the VGA cursor to the end of the print
 ;
 ; Args:
