@@ -1,13 +1,17 @@
 ; Provided under the MIT License: http://mit-license.org/
 ; Copyright (c) 2020 Andrew Kallmeyer <ask@ask.systems>
-%define SECTOR_SIZE 512
+%define SECTOR_SIZE 0x200 ; 512 in decimal
 
-; Segment register value. Actual location is 0x00500
-%define USER_CODE_LOC 0x0050
-; Max value for di and si in typing_loop
-; You can write code right up until we hit this binary.
-; Allows ~30k of code.
-%define USER_CODE_MAX (0x7C00-0x0500) ; boot code address - user code address
+; Segment register value (so the actual start is at the address 0x10*this)
+; This is the first sector after the editor's code
+%define USER_CODE_LOC (CODE_SEGMENT+(SECTOR_SIZE/0x10)*(NUM_EXTRA_SECTORS+1))
+; Maxiumum size for the code buffer
+;
+; There's a lot of extra memory still after this but I don't want to move around
+; the segment register so this is the limit.
+;
+; Allows 64k of code
+%define USER_CODE_MAX 0xFFFF
 
 ; Values in ax after the keyboard read BIOS call
 ; See Figure 4-3 of the 1987 BIOS manual. (page 195)
@@ -132,7 +136,7 @@ print_hex_char:
 ; Also assumes ah = 0x0E and bx = 0
 _print_hex_char:
   cmp al, 9
-  jg .over_9
+  ja .over_9
 
   add al, '0'
   int 0x10
@@ -288,9 +292,9 @@ typing_loop:
   ; ah = key code, al = ascii value
 
   cmp al, ' '
-  jl .non_printable
+  jb .non_printable
   cmp al, '~'
-  jg .non_printable
+  ja .non_printable
   jmp save_and_print_char
 
   .non_printable:
@@ -354,7 +358,7 @@ save_and_print_char:
   sub bl, dl
 
   cmp cx, bx
-  jle .not_cut_off
+  jbe .not_cut_off
 
   ; clip the amount to repaint to the current row
   mov cx, bx
@@ -393,7 +397,7 @@ save_new_line:
   ; Set right to on or off always
   mov ax, 0x0000 ; set to off ; right margin
   cmp cx, ROW_LENGTH
-  jle .right_off
+  jbe .right_off
   mov cx, ROW_LENGTH ; also clip the length for printing (reuse the cmp)
   mov ax, 0x0100 ; set to on ; right margin
   .right_off:
@@ -458,7 +462,7 @@ save_new_line:
   .print_new_line:
   ; re-use the saved result of scan_forward from the check above
   cmp cx, ROW_LENGTH
-  jle .not_cut_off
+  jbe .not_cut_off
   mov cx, ROW_LENGTH ; clamp to the row length
   mov ax, 0x0100 ; set to on ; right margin
   call set_line_scroll_marker
@@ -557,7 +561,7 @@ move_left:
   ; Just move the cursor up
   dec dh
   cmp cx, ROW_LENGTH-1
-  jle .skip_repaint
+  jbe .skip_repaint
   ; fallthrough
 
   .paint_row:
@@ -567,7 +571,7 @@ move_left:
   cmp cx, 0
   je .skip_repaint
   cmp cx, ROW_LENGTH-1
-  jle .no_clipping
+  jbe .no_clipping
   ; Move the print pointer to the end of the line minus ROW_LENGTH-1
   add bp, cx
   mov cx, ROW_LENGTH ; num chars to print
@@ -694,7 +698,7 @@ _next_line:
   mov dl, START_COL ; On the next line we're going to be at the start
 
   cmp cx, ROW_LENGTH
-  jl .skip_resetting_line
+  jb .skip_resetting_line
   ; Note: equal is a special case to remove the extra space at the end of the
   ; line for the user to type in.
   je .skip_right_marker
@@ -728,7 +732,7 @@ _next_line:
   call scan_forward
 
   cmp cx, ROW_LENGTH
-  jle .shorter_than_row
+  jbe .shorter_than_row
   mov ax, 0x0100 ; set to on ; right side
   call set_line_scroll_marker
   mov cx, ROW_LENGTH ; clip to the row
@@ -927,11 +931,11 @@ maybe_reset_gap:
   cmp byte [es:si], 0
   jne .not_at_end
 
-  lea si, [di+GAP_SIZE] ; reset to the default gap size
 
-  ; Clip to USER_CODE_MAX
-  cmp si, USER_CODE_MAX
-  jle .still_have_room
+  ; Reset the end of the gap to the gap_start+GAP_SIZE clipped to USER_CODE_MAX
+  lea si, [di+GAP_SIZE] ; reset to the default gap size (might overflow)
+  cmp di, USER_CODE_MAX-GAP_SIZE ; equivalent to cmp si, USER_CODE_MAX but still works if we overflowed
+  jbe .still_have_room
   mov si, USER_CODE_MAX
   .still_have_room:
 
@@ -952,7 +956,7 @@ maybe_reset_gap:
 
   ; Copy from si to si+GAP_SIZE in a loop in reverse order if there's space
   cmp si, USER_CODE_MAX-GAP_SIZE
-  jg .no_more_room ; if equal we still copy because si is on the \0 and we can't loose it
+  ja .no_more_room ; if equal we still copy because si is on the \0 and we can't loose it
 
   ; We're copying 2 bytes at a time so we need to fix the alignment
   ; (we know there's >= 2 chars because if it was only \0 or we'd be in the other branch)
