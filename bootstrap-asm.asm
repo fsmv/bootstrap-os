@@ -238,20 +238,22 @@ num_debug_prints: db 0x00
 BOOT_DISK: db 0x00 ; value is filled first thing
 
 %include "util/bootsect-footer.asm"
+; This is the start for calculating NUM_EXTRTA_SECTORS
+; There must be nothing other than the bootsector above this label
+extra_sectors_start:
 
 ; Optionally change the keyboard layout.
 ;
 ; To use a layout: look in the file you want for the %ifdef label and -D define
 ; it on the commandline. Ex: ./boot bootstrap-asm.asm -DDVORAK
 ;
-; TODO: is the default layout qwerty or hardware specific? My map is qwerty->dvorak only
-;
 ; It's easy to make a new layout!
 ;
 ; Simply pull up an ascii table (my favorite is `man ascii`) then type it out
-; starting from ' ' to `~` using your qwerty keyboard labels using the desired
+; starting from ' ' to '~' using your qwerty keyboard labels using the desired
 ; layout in your OS (note: both \ and ` must be escaped for the assembler)
 %include "keyboard-layouts/dvorak.asm"
+; TODO: is the default layout qwerty or hardware specific? My map is qwerty->dvorak only
 
 no_more_room_msg: db `No more room in the code buffer`
 no_more_room_msg_len: equ $-no_more_room_msg
@@ -1005,4 +1007,4 @@ maybe_reset_gap:
   .done:
   ret
 
-NUM_EXTRA_SECTORS: equ ($-start_-1)/SECTOR_SIZE + 1
+NUM_EXTRA_SECTORS: equ ($-extra_sectors_start-1)/SECTOR_SIZE + 1
