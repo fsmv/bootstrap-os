@@ -302,7 +302,7 @@ typing_loop:
   .non_printable:
 
   cmp al, `\b` ; Backspace, shift backspace, Ctrl+H
-  je move_left ; TODO: need a separate backspace routine
+  je backspace
 
   cmp al, `\r` ; Enter/Return key
   je save_new_line
@@ -474,6 +474,82 @@ save_new_line:
 
   jmp set_cursor_and_continue
 
+backspace:
+  test di, di ; Can't delete past the beginning of the buffer
+  jz typing_loop
+
+  cmp byte [es:di-1], `\n` ; check the char we just "deleted" (di-1 is usually the char before the cursor)
+  je .join_lines
+
+  ; Don't let the user delete a character they can't see (unless it's \n).
+  ; This also avoids requiring us to scroll_line_left inside backspace
+  cmp dl, START_COL
+  je typing_loop
+
+  ; fallthrough
+.delete_mid_line:
+  dec di ; delete the char by pushing it into the gap
+  dec dl ; Update the cursor position
+
+  ; .repaint_tail:
+  mov bp, si
+  call scan_forward
+
+  ; bx = maximum chars until the end of the row
+  mov bx, (START_COL+ROW_LENGTH)
+  sub bl, dl
+  cmp cx, bx
+  jae .clip_line ; in the equals case we don't want to print an extra space
+
+  ; We're re-painting a line tail that's not cut off currently. So:
+  ; Replace the line-ending char with a space for covering up the old last char
+  mov bx, si
+  add bx, cx ; bx = the line ending char (\n or \0)
+  push word [es:bx-1] ; save the line ending char in the high byte (you can only push whole words)
+                      ; Note: [es:bx+1] may not be safe to read while -1 is here.
+  mov byte [es:bx], ' '
+  push bx ; save the pointer to the line ending
+
+  ; Repaint the tail of the line
+  inc cx ; print the space too
+  call print_line
+
+  ; Restore the line ending
+  pop bx
+  pop ax
+  mov byte [es:bx], ah
+
+  jmp set_cursor_and_continue
+
+  .clip_line:
+  ; Set the right marker on, unless our line exactly ends at the end of the row
+  mov ax, 0x0000 ; set to off ; right margin
+  cmp cx, bx
+  je .no_marker
+  mov ax, 0x0100 ; set to on ; right margin
+  .no_marker:
+  call set_line_scroll_marker
+
+  ; Print only up to our maximum (recalculated from above since bx gets clobbered)
+  mov cx, END_COL+1
+  sub cl, dl
+  call print_line
+
+  jmp set_cursor_and_continue
+
+.join_lines:
+  ; TODO
+  ; dec di ; delete the char by pushing it into the gap
+
+  ; Clear the current line
+  ; Scroll the text below up
+
+  ; jmp _prev_line, but we can't skip_repaint when we are shorter than the row
+  ; Could detect if we were called from here or move_left with cmp [es:si], `\n`
+  ; Also we want to leave the cursor in the middle where it was...
+
+  jmp typing_loop
+
 ; Moves the cursor left one nibble then continues typing_loop
 ;  - Saves the byte in cl when moving to a new byte, also loads the existing
 ;  data into cl if applicable
@@ -489,45 +565,33 @@ move_left:
   mov byte [es:si], al
 
   cmp byte [es:si], `\n`
-  je .prev_line
+  je _prev_line
 
   cmp dl, START_COL
-  je .scroll_line_left
+  je _scroll_line_left
 
   ; Normal case, just go back one char
   dec dl
   jmp set_cursor_and_continue
 
-.scroll_line_left:
-  ; cursor is already where it needs to be
+_scroll_line_left:
+  ; Just need to repaint the tail of the line and set scroll markers
+  mov bp, si
+  call scan_forward
 
-  ; Print the right-side marker if this is the first time we've cut off a char
-  ; on the right. Technically we could just do it every time though.
-  ;
-  ; We're printing the chars at [si-1, si+ROW_LENGTH-2] and we know that
-  ; [si+ROW_LENGTH-1] is the character we're cutting off now. Then if the next
-  ; chacter after that is the new line we know that this is the first time we've
-  ; cut-off a character on the right side in this line.
-  lea bp, [si+ROW_LENGTH-1] ; make sure we don't read past the end
-  cmp bp, USER_CODE_MAX
-  je .need_right_marker
-  cmp byte [es:si+ROW_LENGTH], 0
-  je .need_right_marker
-  cmp byte [es:si+ROW_LENGTH], `\n`
-  jne .already_have_right_marker
-  .need_right_marker:
-  ; Print the marker on the right margin to show the line was cut off
-  mov ax, 0x0100
+  cmp cx, ROW_LENGTH
+  jbe .no_clipping
+  ; Set the right marker only when this is the first char we've cut off
+  cmp cx, ROW_LENGTH+1
+  jne .no_set_right_marker
+  mov ax, 0x0100 ; set to on ; right margin
   call set_line_scroll_marker
-  .already_have_right_marker:
+  .no_set_right_marker:
 
-
-  ; Print ROW_LENGTH characters
-  ;
-  ; We know there are this many chars because we hit START_COL and there's no
-  ; new line, meaning we scrolled which can only happen when the line is long
-  mov cx, ROW_LENGTH
-  mov bp, si ; start printing where the cursor is
+  mov cx, ROW_LENGTH ; Print only up to our maximum
+  ; fallthrough
+  .no_clipping:
+  call print_line
 
   ; Check if we're at the start of the line and clear the left marker if so
   test di, di
@@ -540,10 +604,9 @@ move_left:
   mov ax, 0x0001
   call set_line_scroll_marker
   .keep_marker:
-  call print_line
   jmp set_cursor_and_continue
 
-.prev_line:
+_prev_line:
   xor cx, cx ; line length is 0 if we're at di==0
   test di, di ; make room if the first char is \n
   jz .move_up
@@ -552,7 +615,7 @@ move_left:
   call scan_backward
 
   ; Scroll the screen (and set the final cursor row position)
-  .move_up:
+.move_up:
   cmp dh, START_ROW
   jne .no_screen_scroll
   ; We have to make room for the previous line
@@ -566,7 +629,7 @@ move_left:
   jbe .skip_repaint
   ; fallthrough
 
-  .paint_row:
+.paint_row:
   ; Clip the string to [:min(strlen, ROW_LENGTH-1)] chars at the end
   ; (-1 to leave a space for the user to type at the end)
   mov dl, START_COL ; print from the beginning of the line
@@ -597,7 +660,7 @@ move_left:
   call print_line
   ; fallthrough
 
-  .skip_repaint:
+.skip_repaint:
   ; Set the cursor column and finally move it
   mov dl, START_COL
   add dl, cl
@@ -668,16 +731,25 @@ _scroll_line_right:
 
   ; We need to leave a space for the next character to type
   .at_end_of_line:
-
-  mov ax, 0x0000 ; set to off ; right side
-  call set_line_scroll_marker
-
   ; Put a space in the buffer so we print it and overwrite on the screen the
   ; last char the user typed.
   mov byte [es:di], ' '
   jmp .paint_line
 
   .not_at_end:
+
+  ; If the current char ([es:si]) is the last char in the line, clear the marker
+  ; +1 is safe because we know the current char is not an end-of-line char
+  cmp byte [es:si+1], 0
+  je .clear_right_marker
+  cmp byte [es:si+1], `\n` ; check the next char
+  je .clear_right_marker
+  jmp .keep_right_marker
+  .clear_right_marker:
+  mov ax, 0x0000 ; set to off ; right side
+  call set_line_scroll_marker
+  .keep_right_marker:
+
   ; Copy the next char into the temp space so we have a contiguous buffer
   mov byte al, [es:si]
   mov byte [es:di], al
