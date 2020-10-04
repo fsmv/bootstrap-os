@@ -1079,4 +1079,8 @@ maybe_reset_gap:
   .done:
   ret
 
+; The -1 is because we don't want the next sector until we have 512+1 bytes
+; e.g. for exactly 512 bytes we want 1 extra sector not 2
+;
+; The +1 is because int division does floor() and we want ceil()
 NUM_EXTRA_SECTORS: equ ($-extra_sectors_start-1)/SECTOR_SIZE + 1
