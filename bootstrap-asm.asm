@@ -276,6 +276,9 @@ int 0x10
 ; [es:di] - the first garbage character in the gap (current position to write to)
 ; [es:si] - the first code character after the gap
 ;
+; Note: We must have at least one char of gap i.e. si-di >= 1 at all times
+;       (because we use it as scratch space when printing sometimes)
+;
 ; Additonally cx,bp are callee save while ax,bx are caller save (clobbered)
 mov ax, USER_CODE_LOC
 mov es, ax
@@ -326,7 +329,8 @@ set_cursor_and_continue:
 
 ; Takes an ascii char in al then saves and prints it and continues typing_loop
 save_and_print_char:
-  cmp di, si ; disallow typing anywhere when we're out of buffer space
+  lea bx, [si-1]
+  cmp di, bx ; disallow typing anywhere when we're out of buffer space
   je typing_loop
   cmp di, USER_CODE_MAX ; Leave a \0 at the end
   je typing_loop
@@ -376,7 +380,8 @@ save_and_print_char:
   jmp set_cursor_and_continue
 
 save_new_line:
-  cmp di, si ; disallow typing anywhere when we're out of buffer space
+  lea bx, [si-1]
+  cmp di, bx ; disallow typing anywhere when we're out of buffer space
   je typing_loop
   cmp di, USER_CODE_MAX ; Leave a \0 at the end
   je typing_loop
@@ -477,6 +482,30 @@ save_new_line:
 backspace:
   test di, di ; Can't delete past the beginning of the buffer
   jz typing_loop
+
+  lea bx, [si-1]
+  cmp di, bx ; disallow typing anywhere when we're out of buffer space
+  jne .not_full_buffer
+  ; Clear the buffer full warning if it was full because we're deleting one
+  push dx
+
+  ; Move the screen cursor to the message start
+  mov dx, MAIN_TOP_LEFT-0x0100 ; one row above the top left
+  mov ah, 0x02
+  xor bh, bh
+  int 0x10
+
+  ; Write spaces to clear the message
+  ; Note: this call uses the actual set cursor position not dx
+  mov ah, 0x09
+  mov al, ' '
+  xor bh, bh
+  mov bl, BORDER_COLOR
+  mov cx, no_more_room_msg_len
+  int 0x10
+
+  pop dx
+  .not_full_buffer:
 
   cmp byte [es:di-1], `\n` ; check the char we just "deleted" (di-1 is usually the char before the cursor)
   je _join_lines
@@ -1084,8 +1113,7 @@ set_line_scroll_marker:
 maybe_reset_gap:
   ; If we're at the end of the buffer we can reset the gap without a copy
   cmp byte [es:si], 0
-  jne .not_at_end
-
+  jne .reset_gap_with_move
 
   ; Reset the end of the gap to the gap_start+GAP_SIZE clipped to USER_CODE_MAX
   lea si, [di+GAP_SIZE] ; reset to the default gap size (might overflow)
@@ -1095,11 +1123,16 @@ maybe_reset_gap:
   .still_have_room:
 
   mov byte [es:si], 0 ; keep the string null-terminated
+
+  lea bx, [si-1]
+  cmp di, bx
+  je .no_more_room
   jmp .done
 
-.not_at_end:
-  ; If we run out of gap, we have to do a copy to reset it
-  cmp di, si
+.reset_gap_with_move:
+  ; if the gap is not closed don't reset it yet (this is the maybe part)
+  lea bx, [si-1]
+  cmp di, bx
   jne .done
 
   ; Scan forward to find the \0 (we know we're not already on it)
@@ -1109,36 +1142,51 @@ maybe_reset_gap:
   cmp byte [es:si], 0
   jne .scan_forward
 
-  ; Copy from si to si+GAP_SIZE in a loop in reverse order if there's space
+  ; set bx = the gap size we're using (which might be clipped)
+  mov bx, GAP_SIZE ; set the default gap size if we don't clip it
   cmp si, USER_CODE_MAX-GAP_SIZE
-  ja .no_more_room ; if equal we still copy because si is on the \0 and we can't loose it
+  jbe .shift_gap ; use GAP_SIZE
+
+  ; Calculate the max amount we can expand the gap
+  mov bx, USER_CODE_MAX
+  sub bx, si
+
+  ; Stop if we're out of space and can't expand the gap at all
+  cmp si, USER_CODE_MAX
+  jne .shift_gap
+  mov si, bp ; reset the end of the gap to where it was
+  jmp .no_more_room
+
+  .shift_gap:
+
+  ; Copy from si to si+GAP_SIZE in a loop in reverse order if there's space
 
   ; We're copying 2 bytes at a time so we need to fix the alignment
   ; (we know there's >= 2 chars because if it was only \0 or we'd be in the other branch)
   dec si ; start on the char before the last so we can copy 2
-  mov bx, si
-  sub bx, bp ; bx == num chars - 2 (since the range is [bp, si+1] inclusive)
-  test bx, 1
+  mov ax, si
+  sub ax, bp ; ax == num chars - 2 (since the range is [bp, si+1] inclusive)
+  test ax, 1
   jz .shift_buffer ; if the number of chars is even, skip the extra byte
   ; Copy the first byte when there's an odd number of characters
   mov byte al, [es:si+1] ; +1 since we started on the second-to-last char
-  mov byte [es:si+GAP_SIZE+1], al
+  mov byte [es:bx+si+1], al
   dec si ; now on the third-to-last char (3 is the first odd length)
   .shift_buffer:
   mov word ax, [es:si]
-  mov word [es:si+GAP_SIZE], ax
+  mov word [es:bx+si], ax
   cmp si, bp
   je .end_shift
   sub si, 2
   jmp .shift_buffer
   .end_shift:
 
-  add si, GAP_SIZE ; set the final position (it was left on the original location)
+  ; si == bp == original end of gap location
+  add si, bx ; set the final position (it was left on the original location)
   jmp .done
 
 .no_more_room:
   ; Print a warning message because we can't allow more typing now
-  ; TODO: remove this message on backspace
   push dx
   ; The interrupt reads from es:bp and we need to read the error from the code
   mov ax, cs
