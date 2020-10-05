@@ -365,11 +365,9 @@ save_and_print_char:
 
   cmp cx, bx
   jbe .not_cut_off
+  mov cx, bx ; clip the amount to repaint to the current row
 
-  ; clip the amount to repaint to the current row
-  mov cx, bx
-  ; Set the marker on the right to show we have a cut off string
-  mov ax, 0x0100
+  mov ax, 0x0100 ; set to on ; right margin
   call set_line_scroll_marker
   ; fallthrough
   .not_cut_off:
@@ -391,10 +389,18 @@ save_new_line:
   inc di
 
   call maybe_reset_gap
-
+  ; fallthrough
 .reset_current_line:
+
+  ; If we put a \n in the first character, so there's no string to scan
   cmp di, 1
-  je .clear_tail ; first character is a \n, so there's no string to scan
+  ja .not_empty_first_line
+  ; Clear it incase we were scolled. We're not doing a scan_forward to check
+  mov ax, 0x0000 ; set to off ; right margin
+  call set_line_scroll_marker
+  jmp .clear_tail
+  .not_empty_first_line:
+
   lea bp, [di-2]
   call scan_backward
 
@@ -405,7 +411,9 @@ save_new_line:
   mov ax, 0x0000 ; set to off ; right margin
   cmp cx, ROW_LENGTH
   jbe .right_off
+
   mov cx, ROW_LENGTH ; also clip the length for printing (reuse the cmp)
+
   mov ax, 0x0100 ; set to on ; right margin
   .right_off:
   call set_line_scroll_marker
@@ -451,9 +459,6 @@ save_new_line:
   mov al, 0
   call scroll_text
   mov dh, END_ROW ; restore the cursor row
-  jmp .print_new_line
-
-  inc dh
   jmp .print_new_line
 
   .make_space_in_middle:
@@ -577,6 +582,7 @@ _join_lines:
 
   dec dh ; Move the cursor onto the prev line (must be after scrolling)
 
+  ; We might be bringing a line up from the bottom of the screen
 .repaint_bottom_row:
   push dx
   ; Note: the first iteration will just be the tail of the new joined line
@@ -610,7 +616,7 @@ _join_lines:
   test di, di
   jz .print_the_tail
 
-  ; Setup the new current line (the one above)
+  ; Setup the new current line
   lea bp, [di-1]
   call scan_backward
 
@@ -639,7 +645,6 @@ _join_lines:
 
   call print_line
   jmp set_cursor_and_continue
-
 .shift_line_right:
   ; Copy the last char in the row into the gap so we can print it
   mov byte al, [es:si]
@@ -719,8 +724,7 @@ _scroll_line_left:
   je .at_beginning_of_line
   jmp .keep_marker
   .at_beginning_of_line:
-  ; Clear the marker on the left side
-  mov ax, 0x0001
+  mov ax, 0x0001 ; set to off ; left margin
   call set_line_scroll_marker
   .keep_marker:
   jmp set_cursor_and_continue
@@ -772,8 +776,8 @@ _prev_line:
   call set_line_scroll_marker
 
   call print_line
-  dec cx ; so we set the cursor after the last char not after the space
-  jmp .skip_repaint
+  dec cx ; so we set the cursor after the last char not after the extra space
+  jmp .skip_repaint ; done
 
   .no_clipping:
   call print_line
@@ -787,10 +791,6 @@ _prev_line:
 
 ; Moves the cursor right one char (also wrapping lines) then continues typing_loop
 move_right:
-  ; Only happens when we're completely out of buffer space and can't advance si
-  cmp di, si
-  je typing_loop
-
   ; Stop the cursor at the end of the user's code
   cmp byte [es:si], 0
   je typing_loop
@@ -798,13 +798,7 @@ move_right:
   mov byte al, [es:si]
   mov byte [es:di], al
   inc di
-
-  ; Pretty sure this will never happen because [es:USER_CODE_MAX] is always \0
-  ; when we run out of buffer space. But why depend on having the above check?
-  cmp si, USER_CODE_MAX
-  je .buffer_running_out
-  inc si
-  .buffer_running_out:
+  inc si ; we know we are not at USER_CODE_MAX because of the \0
 
   ; If we just hit the end for the first time, do a free gap reset
   cmp byte [es:si], 0
@@ -904,13 +898,8 @@ _next_line:
   mov cx, ROW_LENGTH
   call print_line
   .skip_resetting_line:
-
   ;fallthrough
 
-; Move the cursor down past any number of new lines
-;  - Prints existing data if scolling to a part of the buffer with data
-;  - Scrolls the screen if necessary
-;  - Assumes it is being called after seeing a \n
 .move_down:
   cmp dh, END_ROW ; if we're at the bottom
   je .scroll_up
@@ -1111,6 +1100,16 @@ set_line_scroll_marker:
 
   pop cx
   pop dx
+
+  ; Move the cursor back
+  ;
+  ; Mostly this isn't needed because we just use dx and set the cursor at the
+  ; end, but sometimes it was causing bugs. So lets just do it for abstraction.
+  ; (also there's one case in save_new_line.reset_current_line where we need it)
+  mov ah, 0x02
+  xor bh, bh ; page number (for both calls)
+  int 0x10
+
   ret
 
 ; Reset the buffer gap only if needed.
