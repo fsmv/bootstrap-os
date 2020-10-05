@@ -2,11 +2,16 @@
 ; Copyright (c) 2020 Andrew Kallmeyer <ask@ask.systems>
 %define SECTOR_SIZE 0x200
 
-; Segment register value. Actual location is 0x00500
-%define USER_CODE_LOC 0x0050
-; Max value for di and si in typing_loop
-; Allows ~30k of code.
-%define USER_CODE_MAX 0x7C00-0x0500-1 ; Boot code address - code address segment reg offset - 1
+; Segment register value (so the actual start is at the address 0x10*this)
+; This is the first sector after the editor's code
+%define USER_CODE_LOC (CODE_SEGMENT+(SECTOR_SIZE/0x10)*(NUM_EXTRA_SECTORS+1))
+; Max value for di and si in typing_loop (i.e. the user code buffer)
+;
+; There's a lot of extra memory still after this but I don't want to move around
+; the segment register so this is the limit.
+;
+; Allows 64k of code
+%define USER_CODE_MAX 0xFFFF
 
 ; Values in ax after the keyboard read BIOS call
 ; See Figure 4-3 of the 1987 BIOS manual. (page 195)
@@ -123,7 +128,7 @@ print_hex_char:
 ; Also assumes ah = 0x0E and bx = 0
 _print_hex_char:
   cmp al, 9
-  jg .over_9
+  ja .over_9
 
   add al, '0'
   int 0x10
@@ -166,7 +171,8 @@ error_msg_len: equ $-error_msg
 BOOT_DISK: db 0x00 ; value is filled first thing
 
 %include "util/bootsect-footer.asm"
-
+; This is also the start for calculating NUM_EXTRTA_SECTORS
+; There must be nothing other than the bootsector above this label
 start_:
 
 ; Print the starting greeting
@@ -608,4 +614,8 @@ row_header_len: equ $-row_header
 run_instr: db `Press Ctrl+D to run your code immediately.`
 run_instr_len: equ $-run_instr
 
-NUM_EXTRA_SECTORS: equ ($-start_)/SECTOR_SIZE + 1
+; The -1 is because we don't want the next sector until we have 512+1 bytes
+; e.g. for exactly 512 bytes we want 1 extra sector not 2
+;
+; The +1 is because int division does floor() and we want ceil()
+NUM_EXTRA_SECTORS: equ ($-start_-1)/SECTOR_SIZE + 1
