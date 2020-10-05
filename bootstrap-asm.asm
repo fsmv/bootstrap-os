@@ -517,12 +517,24 @@ backspace:
   cmp byte [es:di-1], `\n` ; check the char we just "deleted" (di-1 is usually the char before the cursor)
   je _join_lines
 
-  ; Don't let the user delete a character they can't see (unless it's \n).
-  ; This also avoids requiring us to scroll_line_left inside backspace
+  ; If we're at the beginning of the line we don't have to update the view
   cmp dl, START_COL
-  je typing_loop
+  jne .delete_mid_line
 
-  ; fallthrough
+  dec di ; delete the unseen char by pushing it into the gap
+
+  ; Remove the scroll marker if we just hit the beginning of the line
+  test di, di
+  jz .clear_left_marker
+  cmp byte [es:di-1], `\n`
+  je .clear_left_marker
+  jmp typing_loop
+
+  .clear_left_marker:
+  mov ax, 0x0001 ; set to off ; left margin
+  call set_line_scroll_marker
+  jmp typing_loop
+
 .delete_mid_line:
   dec di ; delete the char by pushing it into the gap
   dec dl ; Update the cursor position
