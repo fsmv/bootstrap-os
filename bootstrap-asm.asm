@@ -447,8 +447,10 @@ save_new_line:
   cmp dh, END_ROW
   jne .make_space_in_middle
   ; Move the text one line up to make an empty line at the bottom
+  mov dh, START_ROW ; scroll the whole screen
   mov al, 0
   call scroll_text
+  mov dh, END_ROW ; restore the cursor row
   jmp .print_new_line
 
   inc dh
@@ -575,29 +577,34 @@ _join_lines:
 
   dec dh ; Move the cursor onto the prev line (must be after scrolling)
 
-  ; Repaint the bottom row if needed
+.repaint_bottom_row:
   push dx
   ; Note: the first iteration will just be the tail of the new joined line
   mov bp, si
   xor cx, cx ; make the add do nothing the first time
+  call scan_forward ; skip to the end of the new combined line
   .next_line_loop:
+  cmp dh, END_ROW
+  je .at_last_line
 
   add bp, cx ; skip to the line ending from the previous scan_forward
+  ; If we hit the end of the code before the END_ROW, we didn't have a line cut off
   cmp byte [es:bp], 0
-  je .no_line_to_print ; we only stop here if we didn't hit the END_ROW
+  je .no_line_to_print
 
   inc bp ; skip the \n to scan the next line
-  call scan_forward ; inlining this wouldn't help much, we still need to save bp
-
+  call scan_forward
   inc dh
-  cmp dh, END_ROW
-  jne .next_line_loop
 
+  jmp .next_line_loop
+  .at_last_line:
   call print_line ; if we hit the end row, paint the new last screen line
   ; fallthrough
   .no_line_to_print:
   pop dx
+  ; fallthrough
 
+.paint_joined_line:
   ; Need to skip scan_backward if we're at di == 0 because we can't check di-1
   xor cx, cx ; if the check below passes, we have length 0
   test di, di
@@ -911,8 +918,10 @@ _next_line:
   jmp .done
 
 .scroll_up:
+  mov dh, START_ROW ; scroll the whole screen
   mov al, 0
   call scroll_text
+  mov dh, END_ROW ; restore the cursor row
 
   mov bp, si
   call scan_forward
