@@ -25,14 +25,15 @@
 %define ERROR_COLOR 0x47
 
 ; Note that the code requires that there's at least one character of border
-%define MAIN_TOP_LEFT 0x0204 ; row = 2,  col = 2
-%define MAIN_BOTTOM_RIGHT 0x164B ; row = 22, col = 79-2
-%define START_ROW 0x02
-%define START_COL 0x04
-%define END_ROW 0x16
-%define END_COL 0x4B
-%define ROW_LENGTH (END_COL-START_COL+1) ; 0x48, 72
-%define NUM_PRINTS_PER_ROW (ROW_LENGTH/5) ; 5 = 4 hex chars + 1 space
+; We're in 80 cols by 25 rows mode or 0-4F and 0-18
+%define MAIN_TOP_LEFT 0x0102
+%define MAIN_BOTTOM_RIGHT 0x174D
+%define START_ROW 0x01
+%define START_COL 0x02
+%define END_ROW 0x17
+%define END_COL 0x4D
+%define ROW_LENGTH (END_COL-START_COL+1) ; 0x4C, 76
+%define NUM_PRINTS_PER_ROW (ROW_LENGTH/5) ; 5 is 4 hex chars + 1 space
 
 ; Size of the gap buffer when we reset it
 ; Must be less than USER_CODE_MAX
