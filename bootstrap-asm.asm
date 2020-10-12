@@ -171,7 +171,7 @@ print_hex:
   and al, 0x0F
   call _print_hex_char
 
-  ret
+  retf ; TODO: change back when we delete the placeholder code
 
 ; Prints a hex word in the top margin for debugging purposes
 ; Supports printing as many as will fit in before it runs into the text area
@@ -316,9 +316,65 @@ typing_loop:
   cmp ax, RIGHT_ARROW
   je move_right
 
+  cmp ax, EOT ; Ctrl+D
+  je run_code
+
   jmp typing_loop ; Doesn't match anything above
 
 ; ==== typing_loop internal helpers that continue the loop ====
+
+run_code:
+  call clear_error ; In case this isn't the first try
+
+  ; Close the gap so we have a contiguous buffer
+  .close_gap:
+  mov byte al, [es:si]
+  mov byte [es:di], al
+  ; Check for \0 after moving because we want to copy it over
+  cmp byte [es:si], 0
+  je .gap_closed
+  inc di
+  inc si
+  jmp .close_gap
+  .gap_closed:
+
+  ; Clear the text from the screen
+  mov dx, MAIN_TOP_LEFT
+  mov bl, END_COL-START_COL
+  call scroll_text
+  ; Set the cursor position to the start of the text area
+  mov ah, 0x02
+  xor bh, bh
+  int 0x10
+
+  ; set the source [ds:si] for the assembler
+  mov ax, es
+  mov ds, ax
+  xor si, si
+  ; Set the destination [es:di] for the assembler output (right after the code text)
+  mov ax, es
+  shr di, 8 ; segment registers are address/0x10
+  add ax, di
+  inc ax ; +1 since the shift rounds down and we don't want to overlap
+  mov es, ax
+  call assemble
+
+  test bp, bp
+  jz .no_error
+  ; bp and cx are the arg values we need already
+  call print_error
+  hlt ; TODO: Repaint the screen and go back to typing_loop.
+      ;       Also maybe need to implement jumping to the line with the error.
+
+  .no_error:
+
+  ; far jump to the assembled code
+  mov ax, es
+  mov ds, ax ; also reset ds to the code start
+  push ax
+  xor ax, ax
+  push ax
+  retf
 
 ; Moves the cursor to the value in dx and continues typing_loop
 set_cursor_and_continue:
@@ -457,6 +513,7 @@ save_new_line:
   ; Move the text one line up to make an empty line at the bottom
   mov dh, START_ROW ; scroll the whole screen
   mov al, 0
+  mov bl, 1 ; scroll one line
   call scroll_text
   mov dh, END_ROW ; restore the cursor row
   jmp .print_new_line
@@ -467,6 +524,7 @@ save_new_line:
   cmp byte [es:bx+si], 0 ; if this is the last line, we already have space
   je .no_scroll
   mov al, 1 ; shift the text down to leave a space
+  mov bl, 1 ; scroll one line
   call scroll_text
   .no_scroll:
   ; fallthrough
@@ -493,25 +551,8 @@ backspace:
   lea bx, [si-1]
   cmp di, bx ; disallow typing anywhere when we're out of buffer space
   jne .not_full_buffer
-  ; Clear the buffer full warning if it was full because we're deleting one
-  push dx
-
-  ; Move the screen cursor to the message start
-  mov dx, MAIN_TOP_LEFT-0x0100 ; one row above the top left
-  mov ah, 0x02
-  xor bh, bh
-  int 0x10
-
-  ; Write spaces to clear the message
-  ; Note: this call uses the actual set cursor position not dx
-  mov ah, 0x09
-  mov al, ' '
-  xor bh, bh
-  mov bl, BORDER_COLOR
-  mov cx, no_more_room_msg_len
-  int 0x10
-
-  pop dx
+  call clear_error
+  ; fallthrough
   .not_full_buffer:
 
   cmp byte [es:di-1], `\n` ; check the char we just "deleted" (di-1 is usually the char before the cursor)
@@ -590,6 +631,7 @@ _join_lines:
 
   ; Scroll the text below up (which clears the current line & markers for free)
   mov al, 0 ; shift the text up to cover the current line
+  mov bl, 1 ; scroll one line
   call scroll_text
 
   dec dh ; Move the cursor onto the prev line (must be after scrolling)
@@ -755,6 +797,7 @@ _prev_line:
   jne .no_screen_scroll
   ; We have to make room for the previous line
   mov al, 1
+  mov bl, 1
   call scroll_text
   jmp .paint_row
   .no_screen_scroll:
@@ -921,6 +964,7 @@ _next_line:
 .scroll_up:
   mov dh, START_ROW ; scroll the whole screen
   mov al, 0
+  mov bl, 1
   call scroll_text
   mov dh, END_ROW ; restore the cursor row
 
@@ -959,6 +1003,7 @@ convert_keyboard_layout:
 ;
 ; Args:
 ;   al : 0 for up, non-zero for down
+;   bl : number of rows to scroll
 scroll_text:
   push dx ; cursor position
   push cx
@@ -972,16 +1017,15 @@ scroll_text:
   .up:
 
   mov ch, dh ; start at the cursor row for all 3 (and go until the bottom)
+  mov al, bl ; set the number of rows to scroll
 
   ; Scroll the user code text area
-  mov al, 1 ; scroll one line
   mov cl, START_COL
   mov dx, MAIN_BOTTOM_RIGHT
   mov bh, MAIN_COLOR ; Also clear bh because it's the page number for write string below
   int 0x10
 
   ; Scroll the left side scroll markers (even if there's nothing there)
-  mov al, 1 ; scroll one line
   mov cl, START_COL - 1 ; left one column from the upper left corner (columns are the low bits, so we can save an instruction)
   mov dh, END_ROW
   mov dl, START_COL-1
@@ -991,7 +1035,6 @@ scroll_text:
   ; Scroll the right side scroll markers
   ; Note: I reset some registers to the value they should still have
   ;       just in case the BIOS clobbers them
-  mov al, 1 ; scroll one line
   mov cl, END_COL+1
   mov dh, END_ROW
   mov dl, END_COL+1
@@ -1207,26 +1250,63 @@ maybe_reset_gap:
 
 .no_more_room:
   ; Print a warning message because we can't allow more typing now
+  mov bp, no_more_room_msg
+  mov cx, no_more_room_msg_len
+  call print_error
+  ; fallthrough
+  .done:
+  ret
+
+; Print an error message at the top of the screen
+;
+; Args:
+;  - [cs:bp] : pointer to the message (this call manages the segment registers)
+;  - cx : number of chars to print
+print_error:
   push dx
-  ; The interrupt reads from es:bp and we need to read the error from the code
+
+  ; set es to cs since the interrupt reads from [es:bp]
   mov ax, cs
   mov es, ax
 
-  mov bp, no_more_room_msg
-  mov cx, no_more_room_msg_len
   mov dx, MAIN_TOP_LEFT-0x0100 ; one line above the top left corner
   xor bh, bh ; page number 0
   mov bl, ERROR_COLOR
   mov ax, 0x1301 ; write string without moving the cursor
   int 0x10
 
-  ; Reset es and the cursor position
+  ; reset the es segment
   mov ax, USER_CODE_LOC
   mov es, ax
+
   pop dx
-  ; fallthrough
-  .done:
   ret
+
+; Clears any error message (or anything else) right above the text.
+; No args. Does not reset the cursor to the dx location at the end.
+clear_error:
+  ; Clear the buffer full warning if it was full because we're deleting one
+  push dx
+
+  ; Move the screen cursor to the message start
+  mov dx, MAIN_TOP_LEFT-0x0100 ; one row above the top left
+  mov ah, 0x02
+  xor bh, bh
+  int 0x10
+
+  ; Write spaces to clear the message
+  ; Note: this call uses the actual set cursor position not dx
+  mov ah, 0x09
+  mov al, ' '
+  xor bh, bh
+  mov bl, BORDER_COLOR
+  mov cx, ROW_LENGTH
+  int 0x10
+
+  pop dx
+  ret
+
+%include "assembler.asm"
 
 ; The -1 is because we don't want the next sector until we have 512+1 bytes
 ; e.g. for exactly 512 bytes we want 1 extra sector not 2

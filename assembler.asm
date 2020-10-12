@@ -1,5 +1,13 @@
+; 16 bit x86 assembler that supports the 8086 instruction set in intel syntax
+;
+; Args:
+;  [ds:si] - the source code pointer (null terminated)
+;  [es:di] - the destination to write the x86 bytcode
 assemble:
-  ; TODO: db and equ directives
+  cmp byte [ds:si], 0
+  je no_code_error
+
+  ; TODO: db/dw and equ directives
   ; TODO: expression parser
 
   ; first pass over each line: build the symbol table
@@ -7,9 +15,41 @@ assemble:
   ;  - save the current non-dot label somewhere so we can handle local labels
 
   ; second pass for each line:
+  mov cx, 1 ; keep a line number count for the symbol table
+  assemble_loop:
 
-  ; Skip comments
-  ; Keep track of line numbers for the symbol table
+  ; Skip beginning of line whitespace
+  .skip_spaces:
+  cmp byte [ds:si], 0
+  je done_assembling
+  cmp byte [ds:si], ' '
+  jne .skipped_spaces
+  inc si
+  jmp .skip_spaces
+  .skipped_spaces:
+
+  ; Skip blank lines
+  cmp byte [ds:si], `\n`
+  jne .not_blank_line
+  inc si
+  inc cx ; count the line
+  jmp assemble_loop
+  .not_blank_line:
+
+  ; Skip comment lines
+  cmp byte [ds:si], ';'
+  jne .not_comment
+  .skip_comment_line:
+  cmp byte [ds:si], 0
+  je done_assembling
+  inc si
+  cmp byte [ds:si-1], `\n`
+  jne .skip_comment_line
+  inc cx ; count the line
+  jmp assemble_loop ; now we need to parse the next line
+  .not_comment:
+
+  jmp not_implemented_error
 
   ; parse operation
   ;   - if it starts with j check the jcc list TODO: jmp is special
@@ -35,11 +75,69 @@ assemble:
   ;   - jcc has a special rule. Also put in the absolute line number for jumps
   ;   - don't forget the segment prefix
 
+  jmp assemble_loop
+
+  done_assembling:
+
+  ; Placeholder: output code to print the number of lines
+  mov ax, cs
+  mov ds, ax
+  mov si, placeholder_code
+  mov ax, placeholder_code_len
+  .write_placeholder:
+  mov byte bl, [ds:si]
+  mov byte [es:di], bl
+  inc di
+  inc si
+  dec ax
+  jnz .write_placeholder
+
+  ; If it weren't for the placeholder nothing should be above this
+  test di, di
+  jz no_code_error
+
+
   ; Final pass over the opcodes to fill in the relative jumps
   ;  - TODO: how should we remember where the jumps are? and the pointers into the opcodes for the line numbers?
 
 
+  xor bp, bp
+  ret
 
+  not_implemented_error:
+  mov bp, not_implemented_error_str
+  mov cx, not_implemented_error_len
+  ret
+
+  no_code_error:
+  mov bp, no_code_error_str
+  mov cx, no_code_error_len
+  ret
+
+no_code_error_str: db "There's no assembly code in the text."
+no_code_error_len: equ $-no_code_error_str
+
+not_implemented_error_str: db "Parsing isn't implemented yet."
+not_implemented_error_len: equ $-not_implemented_error_str
+
+placeholder_code:
+; call 0x07C0:print_hex (print the number of lines)
+db 0x9A
+dw print_hex
+dw 0x07C0
+
+; The print "Hello!" code from the bootstrap-hex gif (needs ds set right)
+;db 0xbe,0x14,0x00,0xb1,0x06,0xb4,0x0e,0x3e,0x8a,0x04,0xcd,0x10,0x46,0xfe,0xc9,0x84
+;db 0xc9,0x75,0xf2,0xf4,0x48,0x65,0x6c,0x6c,0x6f,0x21
+
+; Simple. Just print '!'
+;db 0xB4,0x0E
+;db 0xB0,0x21
+;db 0x66,0x31,0xDB
+;db 0xCD,0x10
+
+db 0xF4 ; hlt
+placeholder_code_len: equ $-placeholder_code
 
 ; MOD_* constants and *_addressing constants come from
 ; Vol 2. Chapter 2.1.5 Table 2-1
