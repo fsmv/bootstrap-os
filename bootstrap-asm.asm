@@ -363,8 +363,8 @@ run_code:
   jz .no_error
   ; bp and cx are the arg values we need already
   call print_error
-  hlt ; TODO: Repaint the screen and go back to typing_loop.
-      ;       Also maybe need to implement jumping to the line with the error.
+  jmp $ ; TODO: Repaint the screen and go back to typing_loop.
+        ;       Also maybe need to implement jumping to the line with the error.
 
   .no_error:
 

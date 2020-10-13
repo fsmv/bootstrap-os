@@ -14,7 +14,7 @@ assemble:
   ;  - save the line number the label is on (skipping comment only lines)
   ;  - save the current non-dot label somewhere so we can handle local labels
 
-  ; second pass for each line:
+  ; Second pass to parse the instructions
   mov cx, 1 ; keep a line number count for the symbol table
   assemble_loop:
 
@@ -49,13 +49,96 @@ assemble:
   jmp assemble_loop ; now we need to parse the next line
   .not_comment:
 
-  jmp not_implemented_error
+  ; Parse the instruction name ending with cx = the instruction index
+  ; TODO: if it starts with j check the jcc list TODO: jmp is special
+  ;
+  ; The algorithm is to search through the sorted list of (size, str) rows by
+  ; first matching just the first character, then the second, etc. until we find
+  ; a match or hit the end.
+  ;
+  ; Note: we couldn't use binary search and null-terminated strings because we
+  ; need to count the index
 
-  ; parse operation
-  ;   - if it starts with j check the jcc list TODO: jmp is special
-  ;   - keep count while skipping down the list, need the index
-  ;   - skip all the way until the first char matches, then the second etc
-  ;   - throw an error if we don't find the operation
+  push cx ; save the line count
+  push di ; save the output code location
+
+  mov bp, instructions
+  mov di, 0 ; offset into each instruction we're currently checking
+  xor cx, cx ; the instruction index
+  xor bx, bx ; the length of the current instruction string in the list
+
+  .next_char:
+
+  inc di ; increase the offset to read from (start at 1)
+  mov byte ah, [ds:si] ; save the current char we're searching
+
+  ; Convert to lowercase and throw an error if we found a non-letter char
+  sub ah, 'A'
+  cmp ah, 'Z'-'A'
+  jbe .is_letter
+  ; fallthrough
+  sub ah, 'a'-'A' ; Save an add instruction to undo the sub ah, 'A' with algebra
+  cmp ah, 'z'-'a'
+  jbe .is_letter
+  ; [es:si] is not a letter (could be \0 or \n)
+
+  dec di
+  jz .error ; TODO: maybe syntax error, first char wasn't a letter
+  cmp bx, di ; if the last one had the same length as the source code, then we're done
+  je .found_instruction
+  .error:
+  ; clear the stack
+  pop di
+  pop cx
+  ; We hit the end of the instruction but not the end of the last one in the
+  ; list, so we didn't find a match
+  jmp instruction_not_found_error
+
+  .is_letter:
+  add ah, 'a' ; Turn it back into the ascii char instead of the letter number
+
+  inc si ; End one past the end of the instruction
+  ; fallthrough
+  .check_nth_char:
+  ; bx = size of the current instruction string in the list
+  mov byte bl, [cs:bp]
+
+  test bl, bl ; if we hit the end of the list we didn't get a match
+  jnz .not_end
+
+  ; clear the stack
+  pop di
+  pop cx
+  jmp instruction_not_found_error
+  .not_end:
+
+  ; If the source code instruction is longer than the one in the list, skip it
+  cmp di, bx
+  ja .next_instruction
+
+  ; If the Nth char matches now we need to check the next one
+  cmp byte [cs:bp+di], ah
+  je .next_char
+
+  ; fallthrough
+  .next_instruction:
+  add bp, bx ; Keep going to the next instruction in the list
+  inc bp ; +1 to skip the size byte
+  inc cx
+  jmp .check_nth_char
+  .found_instruction:
+
+  ; Optional placeholder: print the flags of the opcode instead of the index
+  ;mov di, cx
+  ;shl di, 1 ; multiply the index by 2 because the flags are 2 bytes
+  ;mov bx, supported_args
+  ;mov word cx, [cs:bx+di]
+
+  pop di ; restore the output code location
+
+  ; Placeholder: print the instruction index with the placeholder code
+  pop bx ; trash the line count
+  jmp done_assembling
 
   ; parse and verify the args
   ;  - check for immediate
@@ -75,6 +158,8 @@ assemble:
   ;   - jcc has a special rule. Also put in the absolute line number for jumps
   ;   - don't forget the segment prefix
 
+  ; Note: currently dead code
+  pop cx ; restore the line count
   jmp assemble_loop
 
   done_assembling:
@@ -114,11 +199,20 @@ assemble:
   mov cx, no_code_error_len
   ret
 
+  instruction_not_found_error:
+  ; TODO: need jumping to the line number as well
+  mov bp, instruction_not_found_error_str
+  mov cx, instruction_not_found_error_len
+  ret
+
 no_code_error_str: db "There's no assembly code in the text."
 no_code_error_len: equ $-no_code_error_str
 
 not_implemented_error_str: db "Parsing isn't implemented yet."
 not_implemented_error_len: equ $-not_implemented_error_str
+
+instruction_not_found_error_str: db "Invalid instruction in the code."
+instruction_not_found_error_len: equ $-instruction_not_found_error_str
 
 placeholder_code:
 ; call 0x07C0:print_hex (print the number of lines)
@@ -136,7 +230,9 @@ dw 0x07C0
 ;db 0x66,0x31,0xDB
 ;db 0xCD,0x10
 
-db 0xF4 ; hlt
+; jmp $
+db 0xEB
+db 0xFE
 placeholder_code_len: equ $-placeholder_code
 
 ; MOD_* constants and *_addressing constants come from
@@ -259,6 +355,7 @@ db 4,'test'
 db 4,'xchg'
 db 5,'xlatb'
 db 3,'xor'
+db 0
 
 ; Jumps (jcc) are in a separate ID space from the main instructions because we
 ; need to have both short and near opcodes for different jump lengths and don't
@@ -295,6 +392,7 @@ db 3,'jpe'
 db 3,'jpo'
 db 2,'js'
 db 2,'jz'
+db 0
 
 ; These are the short (8bit) jcc opcodes.
 ; To get the near (16bit) jcc opcodes: prefix with 0F and add 0x10
