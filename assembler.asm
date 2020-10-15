@@ -21,7 +21,7 @@ assemble:
   ; Skip beginning of line whitespace
   .skip_spaces:
   cmp byte [ds:si], 0
-  je done_assembling
+  je .done_assembling
   cmp byte [ds:si], ' '
   jne .skipped_spaces
   inc si
@@ -41,7 +41,7 @@ assemble:
   jne .not_comment
   .skip_comment_line:
   cmp byte [ds:si], 0
-  je done_assembling
+  je .done_assembling
   inc si
   cmp byte [ds:si-1], `\n`
   jne .skip_comment_line
@@ -49,20 +49,137 @@ assemble:
   jmp assemble_loop ; now we need to parse the next line
   .not_comment:
 
-  ; Parse the instruction name ending with cx = the instruction index
-  ; TODO: if it starts with j check the jcc list TODO: jmp is special
-  ;
-  ; The algorithm is to search through the sorted list of (size, str) rows by
-  ; first matching just the first character, then the second, etc. until we find
-  ; a match or hit the end.
-  ;
-  ; Note: we couldn't use binary search and null-terminated strings because we
-  ; need to count the index
+  push cx ; save the line count so we can use cx
 
-  push cx ; save the line count
+  ; We have 3 cases for assembling the instruction: jmp, jcc, and all others
+  ; (due to the differences in opcode encoding). So we need to check which case
+  ; we're in first.
+
+  ; Used to clear the 0x20 bit on lowercase chars to get the uppercase version
+  ; Note: Symbols (which have 0x20 set) will just turn into non-printable chars
+  TO_UPPER_MASK: equ ~0x20
+
+  ; Check for jmp in a case-insensitive way, also branch to jcc if we see a J
+  mov byte al, [ds:si]
+  and al, TO_UPPER_MASK
+  cmp al, 'J'
+  jne .normal_instruction
+  mov byte al, [ds:si+1]
+  and al, TO_UPPER_MASK
+  cmp al, 'M'
+  jne .jcc_instruction
+  mov byte al, [ds:si+2]
+  and al, TO_UPPER_MASK
+  cmp al, 'P'
+  jne .jcc_instruction
+  ; We have jmp
+
+  mov dx, JMP_FLAGS
+  call parse_arguments
+
+  ; TODO: output the hardcoded opcodes for JMP based on 8 or 16 bit
+  ; TODO: done
+
+  ; Placeholder: print the instruction index
+  mov cx, -1 ; Placeholder: print -1, we don't have an index
+  pop bx ; trash the line count
+  jmp .done_assembling
+
+  .jcc_instruction:
+
+  mov bp, jcc_instructions ; if we matched J we might need to search the jcc list
+  call search_instructions
+  mov dx, JCC_FLAGS
+
+  call parse_arguments
+
+  ; TODO: use the jcc opcode list and is16
+  ; TODO: done
+
+  ; Placeholder: print the instruction index
+  pop bx ; trash the line count
+  jmp .done_assembling
+
+  .normal_instruction:
+
+  mov bp, instructions ; the default list to search
+  call search_instructions
+
+  ; Lookup the acceptable argument types before parsing the args
+  mov bx, cx
+  shl bx, 1 ; multiply the index by 2 because the flags are 2 bytes
+  add bx, supported_args
+  mov word dx, [cs:bx]
+
+  call parse_arguments
+
+  ; TODO: use the appropriate lists to figure out the opcode
+  ;   - 16 bit args means opcode+1
+  ;   - SWAP_TWO_REG mem first is opcode+2 for 8bit and opcode+3 for 16bit
+  ; TODO: done
+
+  ; Placeholder: print the instruction index
+  pop bx ; trash the line count
+  jmp .done_assembling
+
+
+  ; finally output the opcode bytes
+  ;  - need to check the appropriate opcode list based on the args mode
+
+  ; Note: currently dead code
+  pop cx ; restore the line count
+  jmp assemble_loop
+
+.done_assembling:
+
+  ; Placeholder: output code to print the number of lines
+  mov ax, cs
+  mov ds, ax
+  mov si, placeholder_code
+  mov ax, placeholder_code_len
+  .write_placeholder:
+  mov byte bl, [ds:si]
+  mov byte [es:di], bl
+  inc di
+  inc si
+  dec ax
+  jnz .write_placeholder
+
+  ; If it weren't for the placeholder nothing should be above this
+  test di, di
+  jz no_code_error
+
+  ; TODO: Final pass over the opcodes to fill in the relative jumps
+  ; TODO: how should we remember where the jumps are? and the pointers into the opcodes for the line numbers?
+
+  xor bp, bp
+  ret
+
+no_code_error:
+  mov bp, no_code_error_str
+  mov cx, no_code_error_len
+  ret
+
+; Search an instruction list (either instructions or jcc_instructions) for a
+; match to the text in the input [ds:si] returning the instruction index
+;
+; The algorithm is to search through the sorted list of (size, str) rows by
+; first matching just the first character, then the second, etc. until we find
+; a match or hit the end.
+;
+; Note: we couldn't use binary search and null-terminated strings because we
+; need to count the index
+;
+; Args:
+;  - [cs:bp] : the instruction list to search
+;  - [ds:si] : the input code (which will be advanced by this function)
+; Returns:
+;  - cx : the instruction index (or error message length on error)
+;  - [ds:si] : one char past the end of the instruction name
+;  - bp : 0 if successful, pointer to error message otherwise
+search_instructions:
   push di ; save the output code location
 
-  mov bp, instructions
   mov di, 0 ; offset into each instruction we're currently checking
   xor cx, cx ; the instruction index
   xor bx, bx ; the length of the current instruction string in the list
@@ -87,12 +204,10 @@ assemble:
   cmp bx, di ; if the last one had the same length as the source code, then we're done
   je .found_instruction
   .error:
-  ; clear the stack
-  pop di
-  pop cx
-  ; We hit the end of the instruction but not the end of the last one in the
-  ; list, so we didn't find a match
-  jmp instruction_not_found_error
+  pop di ; clear the stack
+  mov bp, instruction_not_found_error_str
+  mov cx, instruction_not_found_error_len
+  ret
 
   .is_letter:
   add ah, 'a' ; Turn it back into the ascii char instead of the letter number
@@ -106,10 +221,10 @@ assemble:
   test bl, bl ; if we hit the end of the list we didn't get a match
   jnz .not_end
 
-  ; clear the stack
-  pop di
-  pop cx
-  jmp instruction_not_found_error
+  pop di ; clear the stack
+  mov bp, instruction_not_found_error_str
+  mov cx, instruction_not_found_error_len
+  ret
   .not_end:
 
   ; If the source code instruction is longer than the one in the list, skip it
@@ -127,20 +242,19 @@ assemble:
   inc cx
   jmp .check_nth_char
   .found_instruction:
-
-  ; Optional placeholder: print the flags of the opcode instead of the index
-  ;mov di, cx
-  ;shl di, 1 ; multiply the index by 2 because the flags are 2 bytes
-  ;mov bx, supported_args
-  ;mov word cx, [cs:bx+di]
-
   pop di ; restore the output code location
+  ret
 
-  ; Placeholder: print the instruction index with the placeholder code
-  pop bx ; trash the line count
-  jmp done_assembling
-
-  ; parse and verify the args
+; Parse and verify the arguments based on the args flags in dx
+; TODO: seems like this should output the args encoding somewhere too, but we
+;       don't know if the opcode is 1 or 2 bytes yet
+; TODO: How do we make the segment prefix work with the above idea? We'll find
+;       it in this function
+;
+; Args:
+;  - dx : the supported_args flags for this instruction
+;  - [ds:si] : the input code (which will be advanced by this function)
+parse_arguments:
   ;  - check for immediate
   ;  - check for [
   ;    - if it has the : then check the segment register list
@@ -150,59 +264,6 @@ assemble:
   ;  - throw an error if it doesn't match the flags
   ;  - search in the *_addressing lists for the R/M value
   ;  - end with modR/M, disp, imm figured out, plus segment prefix
-
-  ; finally output the opcode bytes
-  ;   - need to check the appropriate opcode list based on the args mode
-  ;   - 16 bit args means opcode+1
-  ;   - SWAP_TWO_REG mem first is opcode+2 for 8bit and opcode+3 for 16bit
-  ;   - jcc has a special rule. Also put in the absolute line number for jumps
-  ;   - don't forget the segment prefix
-
-  ; Note: currently dead code
-  pop cx ; restore the line count
-  jmp assemble_loop
-
-  done_assembling:
-
-  ; Placeholder: output code to print the number of lines
-  mov ax, cs
-  mov ds, ax
-  mov si, placeholder_code
-  mov ax, placeholder_code_len
-  .write_placeholder:
-  mov byte bl, [ds:si]
-  mov byte [es:di], bl
-  inc di
-  inc si
-  dec ax
-  jnz .write_placeholder
-
-  ; If it weren't for the placeholder nothing should be above this
-  test di, di
-  jz no_code_error
-
-
-  ; Final pass over the opcodes to fill in the relative jumps
-  ;  - TODO: how should we remember where the jumps are? and the pointers into the opcodes for the line numbers?
-
-
-  xor bp, bp
-  ret
-
-  not_implemented_error:
-  mov bp, not_implemented_error_str
-  mov cx, not_implemented_error_len
-  ret
-
-  no_code_error:
-  mov bp, no_code_error_str
-  mov cx, no_code_error_len
-  ret
-
-  instruction_not_found_error:
-  ; TODO: need jumping to the line number as well
-  mov bp, instruction_not_found_error_str
-  mov cx, instruction_not_found_error_len
   ret
 
 no_code_error_str: db "There's no assembly code in the text."
@@ -214,8 +275,15 @@ not_implemented_error_len: equ $-not_implemented_error_str
 instruction_not_found_error_str: db "Invalid instruction in the code."
 instruction_not_found_error_len: equ $-instruction_not_found_error_str
 
+; Currently prints the instruction index, then the supported_args flags
 placeholder_code:
-; call 0x07C0:print_hex (print the number of lines)
+; call 0x07C0:print_hex
+db 0x9A
+dw print_hex
+dw 0x07C0
+; mov cx, dx
+db 0x89,0xD1
+; call 0x07C0:print_hex
 db 0x9A
 dw print_hex
 dw 0x07C0
@@ -315,7 +383,6 @@ db 4,'insw'
 db 3,'int'
 db 4,'into'
 db 4,'iret'
-db 3,'jmp'
 db 4,'lahf'
 db 3,'lds'
 db 3,'lea'
@@ -357,10 +424,10 @@ db 5,'xlatb'
 db 3,'xor'
 db 0
 
-; Jumps (jcc) are in a separate ID space from the main instructions because we
-; need to have both short and near opcodes for different jump lengths and don't
-; need to check the instruction type opcodes.
-jump_instructions:
+; Conditional jumps (jcc) are in a separate ID space from the main instructions
+; because there's a different pattern for 8/16 bit immediate opcodes and we
+; don't need the args type flags
+jcc_instructions:
 db 2,'ja'
 db 3,'jae'
 db 2,'jb'
@@ -396,7 +463,7 @@ db 0
 
 ; These are the short (8bit) jcc opcodes.
 ; To get the near (16bit) jcc opcodes: prefix with 0F and add 0x10
-jmp_opcodes:
+jcc_opcodes:
 db 0x77, ; ja
 db 0x73, ; jae
 db 0x72, ; jb
@@ -450,8 +517,11 @@ db 0x74, ; jz
 
 ; All information below is copied out of Vol 2 and the pages for each instruction
 
-%define SHIFT_ONE_OPCODE 0xD0
-%define SHIFT_CL_OPCODE 0xD2
+SHIFT_ONE_OPCODE: equ 0xD0
+SHIFT_CL_OPCODE: equ 0xD2
+
+JCC_FLAGS equ ONE_IMM
+JMP_FLAGS equ (ONE_IMM|ONE_REG)
 
 ; TODO: should NO_ARG opcodes go in the short_reg list instead of the reg list?
 supported_args:
@@ -483,7 +553,6 @@ dw NO_ARG, ; insw
 dw IMM_8, ; int
 dw NO_ARG, ; into
 dw NO_ARG, ; iret
-dw ONE_IMM|REG_16, ; jmp TODO: far jump
 dw NO_ARG, ; lahf
 dw TWO_REG|MEMORY_ONLY, ; lds
 dw TWO_REG|MEMORY_ONLY, ; lea
@@ -557,7 +626,6 @@ db 0x6D, ; insw
 db 0x00, ; int
 db 0xCE, ; into
 db 0xCF, ; iret
-db 0xFF, ; jmp
 db 0x00, ; lahf
 db 0xC5, ; lds
 db 0x8D, ; lea
@@ -627,7 +695,6 @@ db 0x00, ; insw
 db 0xCD, ; int
 db 0x00, ; into
 db 0x00, ; iret
-db 0xEB, ; jmp TODO: 16 bit is E9 not EC
 db 0x00, ; lahf
 db 0x00, ; lds
 db 0x00, ; lea
@@ -699,7 +766,6 @@ db 0x00, ; insw
 db 0x00, ; int
 db 0x00, ; into
 db 0x00, ; iret
-db 0x04, ; jmp
 db 0x00, ; lahf
 db 0x00, ; lds
 db 0x00, ; lea
@@ -769,7 +835,6 @@ db 0x00, ; insw
 db 0x00, ; int
 db 0x00, ; into
 db 0x00, ; iret
-db 0x00, ; jmp
 db 0x00, ; lahf
 db 0x00, ; lds
 db 0x00, ; lea
