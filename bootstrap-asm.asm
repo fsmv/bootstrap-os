@@ -171,7 +171,31 @@ print_hex:
   and al, 0x0F
   call _print_hex_char
 
-  retf ; TODO: change back when we delete the placeholder code
+  ret
+
+; TODO: delete me when we delete the placeholder code
+print_hex_retf:
+  mov ah, 0x0E ; Scrolling teletype BIOS routine (used with int 0x10)
+  xor bx, bx ; Clear bx. bh = page, bl = color
+
+  ; Nibble 0 (most significant)
+  mov al, ch
+  shr al, 4
+  call _print_hex_char
+  ; Nibble 1
+  mov al, ch
+  and al, 0x0F
+  call _print_hex_char
+  ; Nibble 2
+  mov al, cl
+  shr al, 4
+  call _print_hex_char
+  ; Nibble 3
+  mov al, cl
+  and al, 0x0F
+  call _print_hex_char
+
+  retf
 
 ; Prints a hex word in the top margin for debugging purposes
 ; Supports printing as many as will fit in before it runs into the text area

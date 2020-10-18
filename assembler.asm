@@ -292,6 +292,29 @@ search_instructions:
   xor bp, bp
   ret
 
+; Search either reg_8_addressing or reg_16_addressing for a match in [ds:si].
+; Leaves si unchanged.
+;
+; Args:
+;  - bp : the register list to search (assumes each row is 2 bytes)
+; Returns:
+;  - cx : -1 if not found, the index otherwise
+search_registers:
+  xor cx, cx
+  mov word ax, [ds:si]
+  .check_reg:
+  cmp word [cs:bx], 0
+  je .not_found
+  cmp word ax, [cs:bx]
+  je .found
+  inc cx
+  add bx, 2
+  jmp .check_reg
+  .not_found:
+  mov cx, -1
+  .found:
+  ret
+
 ; Parse and verify the arguments based on the args flags in dx
 ; TODO: seems like this should output the args encoding somewhere too, but we
 ;       don't know if the opcode is 1 or 2 bytes yet
@@ -306,6 +329,8 @@ search_instructions:
 ;  - bp : 0 if sucessful, pointer to error string if not
 ;  - cx : unchanged if sucessful, error string length if not
 parse_arguments:
+  ; TODO: save cx
+  ; TODO: check the dx flags in all the cases
   call skip_spaces
 
   cmp byte [ds:si], 0
@@ -319,21 +344,135 @@ parse_arguments:
   jmp .no_arg
   .not_comment:
 
+  ; Check for an immediate
+  ; TODO: char literal support
+  cmp byte [ds:si], '0'
+  jb .not_immediate
+  cmp byte [ds:si], '9'
+  ja .not_immediate
+  ; TODO: Parse immediate value
+  mov bp, not_implemented_error_str
+  mov cx, not_implemented_error_len
+  ret
+  .not_immediate:
+
+  ; Check for memory addressing mode
+  cmp byte [ds:si], '['
+  je .mem_mode
+
+  ; Check for an 8 bit register name
+  mov bx, reg_8_addressing
+  call search_registers
+  cmp cx, -1
+  jne .reg_8
+  ; Check for a 16 bit register name
+  mov bx, reg_16_addressing
+  call search_registers
+  cmp cx, -1
+  jne .reg_16
+
+  mov cx, 0xFFFF
+  call debug_print_hex
+
+  ; TODO: check the symbol table
   mov bp, not_implemented_error_str
   mov cx, not_implemented_error_len
   ret
 
-  ;  - check for immediate
-  ;  - check for [
-  ;    - if it has the : then check the segment register list
-  ;    - only allow +disp after the ]
-  ;  - otherwise it's a register
-  ;  - if it isn't in the register list, check the symbol table
-  ;  - throw an error if it doesn't match the flags
-  ;  - search in the *_addressing lists for the R/M value
-  ;  - end with modR/M, disp, imm figured out, plus segment prefix
+.reg_8:
+  add si, 2 ; skip the register name
 
-  .no_arg:
+  call debug_print_hex
+
+  ; mov dx, TODO output args
+  jmp .next_arg
+
+.reg_16:
+  add si, 2 ; skip the register name
+
+  call debug_print_hex
+
+  ; mov dx, TODO output args
+  jmp .next_arg
+
+.mem_mode:
+  inc si ; skip the [
+  cmp byte [ds:si], 0
+  je .syntax_error
+
+  ; Check if we have a segment register prefix
+  mov bx, segment_prefixes-3
+  .check_segment_loop:
+  add bx, 3
+  mov word ax, [cs:bx]
+  test ax, ax
+  jz .no_segment_prefix ; We hit the end of the list
+  cmp word ax, [ds:si]
+  jne .check_segment_loop
+  ; We found a segment register
+  add si, 2 ; Skip over the segment register name
+  ; Check for and skip the required colon
+  cmp byte [ds:si], ':'
+  jne .syntax_error
+  inc si ; skip the colon
+  ; TODO: need to do something with the return values so after this we know
+  ;       where to write the opcode
+  ; Lookup and write out the prefix byte
+  mov byte al, [cs:bx+2]
+  mov cl, al
+  call debug_print_hex
+  mov byte [es:di], al
+  .no_segment_prefix:
+
+  ; Search the list of valid memory derefrence operands
+  mov cx, -1
+  mov bx, mem_addressing-1
+  .check_next_mem_string:
+  mov bp, si
+  inc bx ; skip to the next mem operand to check
+  inc cx ; count the index for when we get a match
+  cmp byte [cs:bx], 0
+  je .invalid_memory_deref ; Hit the end of the list
+  .check_mem_string:
+  mov byte al, [ds:bp]
+  cmp al, 0
+  jz .next_mem_string ; End of the search string means no match
+  cmp byte al, [cs:bx]
+  jne .next_mem_string
+  inc bp
+  inc bx
+  cmp byte [cs:bx], 0
+  jne .check_mem_string ; keep checking for a match
+  jmp .found_mem_match
+  ; skip to the end of the current mem_addressing string and try the next one
+  .next_mem_string:
+  cmp byte [cs:bx], 0
+  je .check_next_mem_string
+  inc bx
+  jmp .next_mem_string
+
+  .found_mem_match:
+  mov si, bp ; Set the read pointer to one after the last match
+  ; Check for displacement
+  cmp byte [ds:si], '+'
+  jne .no_displacement
+  ; TODO: parse displacement expression
+  mov bp, not_implemented_error_str
+  mov cx, not_implemented_error_len
+  ret
+  .no_displacement:
+
+  ; End square brace is required
+  cmp byte [ds:si], ']'
+  jne .invalid_memory_deref
+  inc si ; skip the ]
+
+  call debug_print_hex
+
+  ; mov dx, TODO output args
+  jmp .next_arg
+
+.no_arg:
   test dx, NO_ARG
   jz .invalid_argument_error
 
@@ -341,9 +480,26 @@ parse_arguments:
   xor bp, bp
   ret
 
-  .invalid_argument_error:
+.next_arg:
+  ; TODO: check for comma to see if it's one arg or two
+  ; TODO: jump back up and do the same thing again, but no_arg isn't possible now
+  mov bp, not_implemented_error_str
+  mov cx, not_implemented_error_len
+  ret
+
+.invalid_argument_error:
   mov bp, invalid_argument_error_str
   mov cx, invalid_argument_error_len
+  ret
+
+.syntax_error:
+  mov bp, syntax_error_str
+  mov cx, syntax_error_len
+  ret
+
+.invalid_memory_deref:
+  mov bp, invalid_memory_deref_error_str
+  mov cx, invalid_memory_deref_error_len
   ret
 
 skip_spaces:
@@ -376,17 +532,23 @@ instruction_not_found_error_len: equ $-instruction_not_found_error_str
 invalid_argument_error_str: db "Arguments provided are not valid for this instruction."
 invalid_argument_error_len: equ $-invalid_argument_error_str
 
+syntax_error_str: db "Invalid syntax in instruction arguments."
+syntax_error_len: equ $-syntax_error_str
+
+invalid_memory_deref_error_str: db "Invalid memory deref operand: not on the list or spaces around +."
+invalid_memory_deref_error_len: equ $-invalid_memory_deref_error_str
+
 ; Currently prints the instruction index, then the supported_args flags
 placeholder_code:
 ; call 0x07C0:print_hex
 db 0x9A
-dw print_hex
+dw print_hex_retf
 dw 0x07C0
 ; mov cx, dx
 db 0x89,0xD1
 ; call 0x07C0:print_hex
 db 0x9A
-dw print_hex
+dw print_hex_retf
 dw 0x07C0
 
 ; The print "Hello!" code from the bootstrap-hex gif (needs ds set right)
@@ -415,14 +577,15 @@ placeholder_code_len: equ $-placeholder_code
 
 ; In order. Count to get the 3 bit R/M field value
 mem_addressing:
-db '[bx+si]',0
-db '[bx+di]',0
-db '[bp+si]',0
-db '[bp+di]',0
-db '[si]',0
-db '[di]',0
-db '[bp]',0
-db '[bx]',0
+db 'bx+si',0
+db 'bx+di',0
+db 'bp+si',0
+db 'bp+di',0
+db 'si',0
+db 'di',0
+db 'bp',0
+db 'bx',0
+db 0
 
 ; In order. Count to get the 3 bit R/M field value
 reg_8_addressing:
@@ -434,6 +597,7 @@ db 'ah'
 db 'ch'
 db 'dh'
 db 'bh'
+dw 0
 
 ; In order. Count to get the 3 bit R/M field value
 reg_16_addressing:
@@ -445,6 +609,7 @@ db 'sp'
 db 'bp'
 db 'si'
 db 'di'
+dw 0
 
 ; From Vol 2. Chapter 2.1.1
 segment_prefixes:
@@ -452,6 +617,7 @@ db 'cs', 0x2E
 db 'ss', 0x36
 db 'ds', 0x3E
 db 'es', 0x26
+dw 0
 
 ; These are only the original 8086 instructions.
 ; From Vol 3. Chapter 20.1.3
