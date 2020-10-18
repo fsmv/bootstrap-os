@@ -72,7 +72,9 @@ for a while.
 
  1. Install qemu: https://www.qemu.org/download/#windows
  2. Install nasm: https://www.nasm.us/pub/nasm/snapshots/latest/win64/
- 3. TODO: Set PATH
+ 3. Set the PATH variable:
+    1. In the start menu, search for and open the environment variables editor 
+    2. Choose either the user or system-wide Path variable and add both `C:\Program Files\NASM` & `C:\Program Files\qemu`
  4. `boot.bat bootstrap-hex.asm` (alternatively you can use the bash script in the git bash prompt)
 
 ## Reference Manuals
@@ -98,3 +100,16 @@ bookmarks).
 
 Windows users could run it in WSL or copy the pdflatex commands out of the
 script.
+
+## Make Your Own Bootable Code
+
+You can simply `%include` the `util/bootsect-header.asm` at the top of your
+bootsector code and `util/bootsect-footer.asm` at the bottom. Feel free to
+customize it and check out the comments for details. These two files contain all
+the details to allow you to BIOS boot on real hardware.
+
+Once you go over the single sector size nasm will give you an error. At that
+point you'll have to put any additional code after `util/bootsect-footer.asm`
+and write some code inside the bootsector to load any additional sectors from
+disk (since the BIOS won't do it for you). Check out the bootsector code I'm
+using for an example.
