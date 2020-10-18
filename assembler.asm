@@ -3,6 +3,10 @@
 ; Args:
 ;  [ds:si] - the source code pointer (null terminated)
 ;  [es:di] - the destination to write the x86 bytcode
+; Returns:
+;  [cs:bp] - pointer to error message or 0 on success
+;  cx      - length of error message
+;  dx      - line number where error occurred
 assemble:
   cmp byte [ds:si], 0
   je no_code_error
@@ -10,28 +14,25 @@ assemble:
   ; TODO: db/dw and equ directives
   ; TODO: expression parser
 
-  ; first pass over each line: build the symbol table
+  ; TODO: first pass over each line: build the symbol table
   ;  - save the line number the label is on (skipping comment only lines)
   ;  - save the current non-dot label somewhere so we can handle local labels
 
   ; Second pass to parse the instructions
   mov cx, 1 ; keep a line number count for the symbol table
-  assemble_loop:
+assemble_loop:
+  cmp byte [ds:si], 0
+  je done_assembling
 
   ; Skip beginning of line whitespace
-  .skip_spaces:
+  call skip_spaces
   cmp byte [ds:si], 0
-  je .done_assembling
-  cmp byte [ds:si], ' '
-  jne .skipped_spaces
-  inc si
-  jmp .skip_spaces
-  .skipped_spaces:
+  je done_assembling
 
   ; Skip blank lines
   cmp byte [ds:si], `\n`
   jne .not_blank_line
-  inc si
+  inc si ; skip the \n
   inc cx ; count the line
   jmp assemble_loop
   .not_blank_line:
@@ -39,14 +40,12 @@ assemble:
   ; Skip comment lines
   cmp byte [ds:si], ';'
   jne .not_comment
-  .skip_comment_line:
+  call skip_to_end_of_line
   cmp byte [ds:si], 0
-  je .done_assembling
-  inc si
-  cmp byte [ds:si-1], `\n`
-  jne .skip_comment_line
-  inc cx ; count the line
-  jmp assemble_loop ; now we need to parse the next line
+  je done_assembling
+  inc si ; skip the \n
+  inc cx ; count the new line
+  jmp assemble_loop
   .not_comment:
 
   push cx ; save the line count so we can use cx
@@ -72,65 +71,104 @@ assemble:
   and al, TO_UPPER_MASK
   cmp al, 'P'
   jne .jcc_instruction
-  ; We have jmp
-
+.jmp:
+  add si, 3 ; skip the jmp
   mov dx, JMP_FLAGS
   call parse_arguments
+  test bp, bp
+  jnz .error_ret
 
-  ; TODO: output the hardcoded opcodes for JMP based on 8 or 16 bit
-  ; TODO: done
+  test dx, IMM_8
+  jnz .jmp_near
+  test dx, IMM_16
+  jnz .jmp_short
+  ; TODO: special case for labels
+  jmp invalid_argument_error
 
-  ; Placeholder: print the instruction index
-  mov cx, -1 ; Placeholder: print -1, we don't have an index
-  pop bx ; trash the line count
-  jmp .done_assembling
+  .jmp_near: ; TODO
+  .jmp_short: ; TODO
 
-  .jcc_instruction:
+  jmp .next_line_or_done
 
+.jcc_instruction:
   mov bp, jcc_instructions ; if we matched J we might need to search the jcc list
   call search_instructions
-  mov dx, JCC_FLAGS
+  test bp, bp
+  jnz .error_ret
 
+  mov dx, JCC_FLAGS
   call parse_arguments
+  test bp, bp
+  jnz .error_ret
 
   ; TODO: use the jcc opcode list and is16
-  ; TODO: done
 
-  ; Placeholder: print the instruction index
-  pop bx ; trash the line count
-  jmp .done_assembling
+  test dx, IMM_8
+  jnz .jcc_near
+  test dx, IMM_16
+  jnz .jcc_short
+  ; TODO: special case for labels
+  jmp invalid_argument_error
 
-  .normal_instruction:
+  .jcc_near: ; TODO
+  .jcc_short: ; TODO
 
+  jmp .next_line_or_done
+
+.normal_instruction:
   mov bp, instructions ; the default list to search
   call search_instructions
+  test bp, bp
+  jnz .error_ret
 
-  ; Lookup the acceptable argument types before parsing the args
+  ; Lookup the acceptable argument types and parse the args
   mov bx, cx
   shl bx, 1 ; multiply the index by 2 because the flags are 2 bytes
   add bx, supported_args
   mov word dx, [cs:bx]
-
   call parse_arguments
+  test bp, bp
+  jnz .error_ret
+
+  test dx, NO_ARG
+  jnz .no_arg
+
+  pop dx
+  mov bp, not_implemented_error_str
+  mov cx, not_implemented_error_len
+
+  .no_arg:
+  ; Write the opcode to the output
+  mov bx, reg_opcodes
+  add bx, cx
+  mov byte al, [cs:bx]
+  mov byte [es:di], al
+  inc di ; advance the write pointer
+  jmp .next_line_or_done
 
   ; TODO: use the appropriate lists to figure out the opcode
   ;   - 16 bit args means opcode+1
   ;   - SWAP_TWO_REG mem first is opcode+2 for 8bit and opcode+3 for 16bit
-  ; TODO: done
-
-  ; Placeholder: print the instruction index
-  pop bx ; trash the line count
-  jmp .done_assembling
-
+  jmp .next_line_or_done
 
   ; finally output the opcode bytes
   ;  - need to check the appropriate opcode list based on the args mode
+.next_line_or_done:
+  ;pop cx ; restore the line count
+  pop bx ; trash the line count
 
-  ; Note: currently dead code
-  pop cx ; restore the line count
+  cmp byte [es:si], `0`
+  je done_assembling
+  ; if we're not at the end of the buffer, then we have a \n to skip
+  inc si
   jmp assemble_loop
 
-.done_assembling:
+; Used to forward an error (in bp, cx) from a subroutine
+.error_ret:
+  pop dx ; return the line count in dx
+  ret
+
+done_assembling:
 
   ; Placeholder: output code to print the number of lines
   mov ax, cs
@@ -156,8 +194,16 @@ assemble:
   ret
 
 no_code_error:
+  mov dx, 1 ; just always say the error is the first line
   mov bp, no_code_error_str
   mov cx, no_code_error_len
+  ret
+
+invalid_argument_error:
+  ; TODO: Add which args are allowed to the string?
+  pop dx ; return the line number
+  mov bp, invalid_argument_error_str
+  mov cx, invalid_argument_error_len
   ret
 
 ; Search an instruction list (either instructions or jcc_instructions) for a
@@ -243,6 +289,7 @@ search_instructions:
   jmp .check_nth_char
   .found_instruction:
   pop di ; restore the output code location
+  xor bp, bp
   ret
 
 ; Parse and verify the arguments based on the args flags in dx
@@ -254,7 +301,28 @@ search_instructions:
 ; Args:
 ;  - dx : the supported_args flags for this instruction
 ;  - [ds:si] : the input code (which will be advanced by this function)
+; Returns:
+;  - dx : the flag bit for the argument type used
+;  - bp : 0 if sucessful, pointer to error string if not
+;  - cx : unchanged if sucessful, error string length if not
 parse_arguments:
+  call skip_spaces
+
+  cmp byte [ds:si], 0
+  je .no_arg
+  cmp byte [ds:si], `\n`
+  je .no_arg
+
+  cmp byte [ds:si], ';'
+  jne .not_comment
+  call skip_to_end_of_line
+  jmp .no_arg
+  .not_comment:
+
+  mov bp, not_implemented_error_str
+  mov cx, not_implemented_error_len
+  ret
+
   ;  - check for immediate
   ;  - check for [
   ;    - if it has the : then check the segment register list
@@ -264,16 +332,49 @@ parse_arguments:
   ;  - throw an error if it doesn't match the flags
   ;  - search in the *_addressing lists for the R/M value
   ;  - end with modR/M, disp, imm figured out, plus segment prefix
+
+  .no_arg:
+  test dx, NO_ARG
+  jz .invalid_argument_error
+
+  mov dx, NO_ARG
+  xor bp, bp
+  ret
+
+  .invalid_argument_error:
+  mov bp, invalid_argument_error_str
+  mov cx, invalid_argument_error_len
+  ret
+
+skip_spaces:
+  cmp byte [ds:si], ' '
+  jne .skipped_spaces
+  inc si
+  jmp skip_spaces
+  .skipped_spaces:
+  ret
+
+skip_to_end_of_line:
+  cmp byte [ds:si], 0
+  je .at_end
+  cmp byte [ds:si], `\n`
+  je .at_end
+  inc si
+  jmp skip_to_end_of_line
+  .at_end:
   ret
 
 no_code_error_str: db "There's no assembly code in the text."
 no_code_error_len: equ $-no_code_error_str
 
-not_implemented_error_str: db "Parsing isn't implemented yet."
+not_implemented_error_str: db "Not implemented yet."
 not_implemented_error_len: equ $-not_implemented_error_str
 
 instruction_not_found_error_str: db "Invalid instruction in the code."
 instruction_not_found_error_len: equ $-instruction_not_found_error_str
+
+invalid_argument_error_str: db "Arguments provided are not valid for this instruction."
+invalid_argument_error_len: equ $-invalid_argument_error_str
 
 ; Currently prints the instruction index, then the supported_args flags
 placeholder_code:
@@ -498,22 +599,22 @@ db 0x74, ; jz
 
 ; Argument format options for the instructions (bit flags you can OR together)
 ; Note: These aren't in the intel manual, it's just a classification I made up
-%define NO_ARG       0x0001
-%define REG_8        0x0002
-%define REG_16       0x0004
-%define ONE_REG      (REG_8|REG_16) ; reg/mem (has a short reg option if short_reg_opcodes is non-zero)
-%define IMM_16       0x0008 ; 16 bit immediate only
-%define IMM_8        0x0010 ; 8 bit immediate only
-%define ONE_IMM      (IMM_8|IMM_16)
-%define TWO_REG      0x0020 ; reg/mem, reg
-%define REG_IMM      0x0040 ; reg/mem, 8 bit or 16 bit (might have a short_reg_opcode)
-%define SWAP_TWO_REG 0x0080 ; reg, rem/mem (encoded with opcode+=2)
+NO_ARG:        equ 0x0001
+REG_8:         equ 0x0002
+REG_16:        equ 0x0004
+ONE_REG:       equ REG_8|REG_16 ; reg/mem (has a short reg option if short_reg_opcodes is non-zero)
+IMM_16:        equ 0x0008 ; 16 bit immediate only
+IMM_8:         equ 0x0010 ; 8 bit immediate only
+ONE_IMM:       equ IMM_8|IMM_16
+TWO_REG:       equ 0x0020 ; reg/mem, reg
+REG_IMM:       equ 0x0040 ; reg/mem, 8 bit or 16 bit (might have a short_reg_opcode)
+SWAP_TWO_REG : equ 0x0080 ; reg, rem/mem (encoded with opcode+=2)
 
-%define DEFAULT_10        0x0100 ; aad and aam have a special default arg of 10 and 8bit imm otherwise
-%define SHORT_REG_AL_ONLY 0x0200
-%define SHORT_REG_DX_ONLY 0x0400
-%define MEMORY_ONLY       0x0800
-%define SHIFT             0x1000 ; in REG_IMM, only 8 bit is allowed. Also There's special shift by cl and by 1 opcodes.
+DEFAULT_10:        equ 0x0100 ; aad and aam have a special default arg of 10 and 8bit imm otherwise
+SHORT_REG_AL_ONLY: equ 0x0200
+SHORT_REG_DX_ONLY: equ 0x0400
+MEMORY_ONLY:       equ 0x0800
+SHIFT:             equ 0x1000 ; in REG_IMM, only 8 bit is allowed. Also There's special shift by cl and by 1 opcodes.
 
 ; All information below is copied out of Vol 2 and the pages for each instruction
 
