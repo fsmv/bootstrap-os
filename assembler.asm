@@ -17,9 +17,11 @@ assemble:
   ; TODO: first pass over each line: build the symbol table
   ;  - save the line number the label is on (skipping comment only lines)
   ;  - save the current non-dot label somewhere so we can handle local labels
+  ;  - have a resolved/unresolved flag we can flip as we go and fill in values
+  ;  - just write the data right before the assembled code
 
   ; Second pass to parse the instructions
-  mov cx, 1 ; keep a line number count for the symbol table
+  mov cx, 1 ; keep a line number count for error reporting
 assemble_loop:
   cmp byte [ds:si], 0
   je done_assembling
@@ -50,6 +52,8 @@ assemble_loop:
 
   push cx ; save the line count so we can use cx
 
+  ; TODO: parse labels and fill in values for line numbers as we hit them
+
   ; We have 3 cases for assembling the instruction: jmp, jcc, and all others
   ; (due to the differences in opcode encoding). So we need to check which case
   ; we're in first.
@@ -77,6 +81,8 @@ assemble_loop:
   call parse_arguments
   test bp, bp
   jnz .error_ret
+
+  ; TODO: needs 8/16 bit, is unresolved expression
 
   test dx, IMM_8
   jnz .jmp_near
@@ -129,6 +135,14 @@ assemble_loop:
   call parse_arguments
   test bp, bp
   jnz .error_ret
+
+  ; TODO: flags needed from parse_arguments:
+  ;       - Use immediate, use register, or use short reg
+  ;       - 8/16 bit
+  ;       - is SWAP_TWO_REG
+  ;       - use the extra_opcode
+  ;       - shift 1 or shift cl
+  ;       - mov read or write segment
 
   test dx, NO_ARG
   jnz .no_arg
@@ -187,8 +201,14 @@ done_assembling:
   test di, di
   jz no_code_error
 
-  ; TODO: Final pass over the opcodes to fill in the relative jumps
-  ; TODO: how should we remember where the jumps are? and the pointers into the opcodes for the line numbers?
+  ; TODO: Loop through the unresolved expressions and resolve them (and fill in
+  ;       in the values in the code)
+  ;       - Once we get here we'll have a resolved value for everything in the
+  ;         symbol table
+  ;       - We'll need to keep a list of pointers to expressions and pointers to
+  ;         the destination in the code for the value
+  ;       - We'll write this list in the assemble_loop and probably save it on
+  ;         the stack if we can
 
   xor bp, bp
   ret
@@ -325,7 +345,9 @@ search_registers:
 ;  - dx : the supported_args flags for this instruction
 ;  - [ds:si] : the input code (which will be advanced by this function)
 ; Returns:
-;  - dx : the flag bit for the argument type used
+;  - dx : the flags for the argument type actually used
+;  - bx : pointer on the stack to the args encoding in the order of:
+;         modRM, immediate, displacement. Which are present depends on dx.
 ;  - bp : 0 if sucessful, pointer to error string if not
 ;  - cx : unchanged if sucessful, error string length if not
 parse_arguments:
@@ -379,6 +401,7 @@ parse_arguments:
   mov cx, not_implemented_error_len
   ret
 
+; TODO: reg_8 and reg_16 should be the same except 16 needs opcode+1
 .reg_8:
   add si, 2 ; skip the register name
 
@@ -566,7 +589,7 @@ db 0xEB
 db 0xFE
 placeholder_code_len: equ $-placeholder_code
 
-; MOD_* constants and *_addressing constants come from
+; MOD_* constants and *_addressing constants come from:
 ; Vol 2. Chapter 2.1.5 Table 2-1
 
 ; The first 2 bits of the ModRM byte
@@ -611,16 +634,18 @@ db 'si'
 db 'di'
 dw 0
 
-; From Vol 2. Chapter 2.1.1
+; The segment register names and their prefix byte values
+;  - Prefix byte values are from Vol 2. Chapter 2.1.1
+;  - These are in order of the Sreg arg (for mov) from Vol 2. Chapter 3.1.1.3
 segment_prefixes:
+db 'es', 0x26
 db 'cs', 0x2E
 db 'ss', 0x36
 db 'ds', 0x3E
-db 'es', 0x26
 dw 0
 
 ; These are only the original 8086 instructions.
-; From Vol 3. Chapter 20.1.3
+; List from Vol 3. Chapter 20.1.3
 instructions:
 db 3,'aaa'
 db 3,'aad'
@@ -674,6 +699,7 @@ db 5,'pushf'
 db 3,'rcl'
 db 3,'rcr'
 db 3,'ret'
+db 4,'retf'
 db 3,'rol'
 db 3,'ror'
 db 4,'sahf'
@@ -765,32 +791,46 @@ db 0x74, ; jz
 
 ; Argument format options for the instructions (bit flags you can OR together)
 ; Note: These aren't in the intel manual, it's just a classification I made up
-NO_ARG:        equ 0x0001
-REG_8:         equ 0x0002
-REG_16:        equ 0x0004
-ONE_REG:       equ REG_8|REG_16 ; reg/mem (has a short reg option if short_reg_opcodes is non-zero)
-IMM_16:        equ 0x0008 ; 16 bit immediate only
-IMM_8:         equ 0x0010 ; 8 bit immediate only
-ONE_IMM:       equ IMM_8|IMM_16
-TWO_REG:       equ 0x0020 ; reg/mem, reg
-REG_IMM:       equ 0x0040 ; reg/mem, 8 bit or 16 bit (might have a short_reg_opcode)
-SWAP_TWO_REG : equ 0x0080 ; reg, rem/mem (encoded with opcode+=2)
-
-DEFAULT_10:        equ 0x0100 ; aad and aam have a special default arg of 10 and 8bit imm otherwise
+NO_ARG:       equ 0x0001
+REG_8:        equ 0x0002
+REG_16:       equ 0x0004
+ONE_REG:      equ REG_8|REG_16 ; reg/mem (might have a short_reg_opcode)
+IMM_16:       equ 0x0008 ; 16 bit immediate only
+IMM_8:        equ 0x0010 ; 8 bit immediate only
+ONE_IMM:      equ IMM_8|IMM_16
+TWO_REG:      equ 0x0020 ; reg/mem, reg
+REG_IMM:      equ 0x0040 ; reg/mem, 8 bit or 16 bit (might have a short_reg_opcode)
+SWAP_TWO_REG: equ 0x0080 ; reg, rem/mem (encoded with opcode+=2)
+; Less common argument options
+SHORT_REG:         equ 0x0100
 SHORT_REG_AL_ONLY: equ 0x0200
 SHORT_REG_DX_ONLY: equ 0x0400
-MEMORY_ONLY:       equ 0x0800
-SHIFT:             equ 0x1000 ; in REG_IMM, only 8 bit is allowed. Also There's special shift by cl and by 1 opcodes.
+DEFAULT_10:        equ 0x0800 ; aad and aam have a special default arg of 10 and 8bit imm otherwise
+MEMORY_ONLY:       equ 0x1000
+SHIFT:             equ 0x2000 ; reg/mem, imm8 or reg/mem, 1 or reg/mem, cl
+FAR_JUMP:          equ 0x4000
+MOV_SEGMENT:       equ 0x8000
+
+; Extra overloaded flags for parse_arguments return values only
+SHIFT_ONE:               equ 0x0200
+SHIFT_CL:                equ 0x0400
+MOV_READ_SEGMENT:        equ 0x0800
+MOV_WRITE_SEGMENT:       equ 0x1000
+UNRESOLVED_DISPLACEMENT: equ 0x2000 ; the displacement value is a pointer to the expression to resolve later
+UNRESOLVED_IMMEDIATE:    equ 0x8000 ; the immediate value is a pointer to the expression to resolve later
 
 ; All information below is copied out of Vol 2 and the pages for each instruction
 
 SHIFT_ONE_OPCODE: equ 0xD0
-SHIFT_CL_OPCODE: equ 0xD2
+SHIFT_CL_OPCODE:  equ 0xD2
+JMP_SHORT_OPCODE: equ 0xEB
+JMP_NEAR_OPCODE:  equ 0xE9
+READ_SEGMENT_OPCODE:  equ 0x8C
+WRITE_SEGMENT_OPCODE: equ 0x8E
 
 JCC_FLAGS equ ONE_IMM
-JMP_FLAGS equ (ONE_IMM|ONE_REG)
+JMP_FLAGS equ ONE_IMM|ONE_REG|FAR_JUMP
 
-; TODO: should NO_ARG opcodes go in the short_reg list instead of the reg list?
 supported_args:
 dw NO_ARG, ; aaa
 dw IMM_8|DEFAULT_10, ; aad
@@ -799,7 +839,7 @@ dw NO_ARG, ; aas
 dw REG_IMM|TWO_REG|SWAP_TWO_REG|SHORT_REG_AL_ONLY, ; adc
 dw REG_IMM|TWO_REG|SWAP_TWO_REG|SHORT_REG_AL_ONLY, ; add
 dw REG_IMM|TWO_REG|SWAP_TWO_REG|SHORT_REG_AL_ONLY, ; and
-dw IMM_16|REG_16, ; call TODO: far jump
+dw IMM_16|REG_16|FAR_JUMP, ; call
 dw NO_ARG, ; cbw
 dw NO_ARG, ; clc
 dw NO_ARG, ; cld
@@ -808,13 +848,13 @@ dw REG_IMM|TWO_REG|SWAP_TWO_REG|SHORT_REG_AL_ONLY, ; cmp
 dw NO_ARG, ; cwd
 dw NO_ARG, ; daa
 dw NO_ARG, ; das
-dw ONE_REG, ; dec
+dw ONE_REG|SHORT_REG, ; dec
 dw ONE_REG, ; div
 dw NO_ARG, ; hlt
 dw ONE_REG, ; idiv
 dw ONE_REG, ; imul Note: the other 2 forms weren't on the 8086
 dw IMM_8|SHORT_REG_DX_ONLY, ; in `in al/ax, imm8` or `in al/ax, dx` are the only forms
-dw ONE_REG, ; inc
+dw ONE_REG|SHORT_REG, ; inc
 dw NO_ARG, ; insb
 dw NO_ARG, ; insw
 dw IMM_8, ; int
@@ -828,7 +868,7 @@ dw NO_ARG, ; lock
 dw IMM_8, ; loop
 dw IMM_8, ; loope
 dw IMM_8, ; loopne
-dw TWO_REG|SWAP_TWO_REG|REG_IMM, ; mov TODO: special opcodes for mov segment register
+dw TWO_REG|SWAP_TWO_REG|REG_IMM|SHORT_REG|MOV_SEGMENT,
 dw ONE_REG, ; mul
 dw ONE_REG, ; neg
 dw NO_ARG, ; nop
@@ -837,21 +877,22 @@ dw REG_IMM|TWO_REG|SWAP_TWO_REG|SHORT_REG_AL_ONLY, ; or
 dw IMM_8|SHORT_REG_DX_ONLY, ; out
 dw NO_ARG, ; outsb
 dw NO_ARG, ; outsw
-dw REG_16, ; pop TODO: special segment register opcodes
+dw REG_16|SHORT_REG, ; pop   Note: there are special segment register opcodes we don't support
 dw NO_ARG, ; popf
-dw REG_16|IMM_16, ; push TODO: special segment register opcodes plus it has IMM_8 just not following the pattern
+dw REG_16|IMM_16|SHORT_REG, ; push   Note: there are special segment register opcodes plus it has IMM_8 just not following the pattern
 dw NO_ARG, ; pushf
-dw REG_IMM|SHIFT, ; rcl
-dw REG_IMM|SHIFT, ; rcr
-dw NO_ARG|IMM_16, ; ret TODO: far return
-dw REG_IMM|SHIFT, ; rol
-dw REG_IMM|SHIFT, ; ror
+dw SHIFT, ; rcl
+dw SHIFT, ; rcr
+dw NO_ARG|IMM_16, ; ret
+dw NO_ARG|IMM_16, ; retf
+dw SHIFT, ; rol
+dw SHIFT, ; ror
 dw NO_ARG, ; sahf
-dw REG_IMM|SHIFT, ; sal
-dw REG_IMM|SHIFT, ; sar
+dw SHIFT, ; sal
+dw SHIFT, ; sar
 dw REG_IMM|TWO_REG|SWAP_TWO_REG|SHORT_REG_AL_ONLY, ; sbb
-dw REG_IMM|SHIFT, ; shl
-dw REG_IMM|SHIFT, ; shr
+dw SHIFT, ; shl
+dw SHIFT, ; shr
 dw NO_ARG, ; stc
 dw NO_ARG, ; std
 dw REG_IMM|TWO_REG|SWAP_TWO_REG|SHORT_REG_AL_ONLY, ; sub
@@ -917,6 +958,7 @@ db 0x9C, ; pushf
 db 0x00, ; rcl
 db 0x00, ; rcr
 db 0xC3, ; ret
+db 0xCB, ; retf
 db 0x00, ; rol
 db 0x00, ; ror
 db 0x9E, ; sahf
@@ -986,6 +1028,7 @@ db 0x00, ; pushf
 db 0xC0, ; rcl
 db 0xC0, ; rcr
 db 0xC2, ; ret
+db 0xCA, ; retf
 db 0xC0, ; rol
 db 0xC0, ; ror
 db 0x00, ; sahf
@@ -1057,6 +1100,7 @@ db 0x00, ; pushf
 db 0x02, ; rcl
 db 0x03, ; rcr
 db 0x00, ; ret
+db 0x00, ; retf
 db 0x00, ; rol (value 0)
 db 0x01, ; ror
 db 0x00, ; sahf
@@ -1126,6 +1170,7 @@ db 0x00, ; pushf
 db 0x00, ; rcl
 db 0x00, ; rcr
 db 0x00, ; ret
+db 0x00, ; retf
 db 0x00, ; rol
 db 0x00, ; ror
 db 0x00, ; sahf
