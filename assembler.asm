@@ -4,7 +4,7 @@
 ;  [ds:si] - the source code pointer (null terminated)
 ;  [es:di] - the destination to write the x86 bytcode
 ; Returns:
-;  [cs:bp] - pointer to error message or 0 on success
+;  [cs:bx] - pointer to error message or 0 on success
 ;  cx      - length of error message
 ;  dx      - line number where error occurred
 assemble:
@@ -79,7 +79,7 @@ assemble_loop:
   add si, 3 ; skip the jmp
   mov dx, JMP_FLAGS
   call parse_arguments
-  test bp, bp
+  test bx, bx
   jnz .error_ret
 
   ; TODO: needs 8/16 bit, is unresolved expression
@@ -99,12 +99,12 @@ assemble_loop:
 .jcc_instruction:
   mov bp, jcc_instructions ; if we matched J we might need to search the jcc list
   call search_instructions
-  test bp, bp
+  test bx, bx
   jnz .error_ret
 
   mov dx, JCC_FLAGS
   call parse_arguments
-  test bp, bp
+  test bx, bx
   jnz .error_ret
 
   ; TODO: use the jcc opcode list and is16
@@ -124,7 +124,7 @@ assemble_loop:
 .normal_instruction:
   mov bp, instructions ; the default list to search
   call search_instructions
-  test bp, bp
+  test bx, bx
   jnz .error_ret
 
   ; Lookup the acceptable argument types and parse the args
@@ -133,45 +133,83 @@ assemble_loop:
   add bx, supported_args
   mov word dx, [cs:bx]
   call parse_arguments
-  test bp, bp
+  test bx, bx
   jnz .error_ret
 
-  ; TODO: flags needed from parse_arguments:
-  ;       - Use immediate, use register, or use short reg
-  ;       - 8/16 bit
-  ;       - is SWAP_TWO_REG
-  ;       - use the extra_opcode
-  ;       - shift 1 or shift cl
-  ;       - mov read or write segment
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_IMM
+  jnz .imm_opcode
+  test byte [bp+parse_arguments.OUT_FLAGS], USE_SHORT_REG
+  jnz .short_reg_opcode
+  ; fallthrough
 
-  test dx, NO_ARG
-  jnz .no_arg
+  .reg_opcode:
 
-  pop dx
-  mov bp, not_implemented_error_str
-  mov cx, not_implemented_error_len
+  ; Write the segment prefix to the output if we have one
+  mov byte al, [bp+parse_arguments.SEGMENT_PREFIX]
+  test al, al
+  jz .no_segment_prefix
+  mov byte [es:di], al
+  inc di
+  .no_segment_prefix:
 
-  .no_arg:
   ; Write the opcode to the output
   mov bx, reg_opcodes
   add bx, cx
-  mov byte al, [cs:bx]
+  mov byte al, [cs:bx] ; al = reg_opcodes[instruction_index]
+  ; TODO USE_SWAP_REG means we need opcode+2 for 8bit and opcode+3 for 16bit
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_16
+  jz .8bit_reg_opcode
+  inc al ; for 16 bit we need opcode+1
+  .8bit_reg_opcode:
+  ; Write the opcode to the output
   mov byte [es:di], al
-  inc di ; advance the write pointer
+  inc di
+
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_NO_ARG
+  jnz .next_line_or_done ; if it was a no_arg we have nothing else to write
+
+  mov byte al, [bp+parse_arguments.MODRM] ; read the modRM byte
+
+  ; Add the extra opcode into the modRM byte if we need to
+  test byte [bp+parse_arguments.OUT_FLAGS], USE_EXTRA_OP
+  jz .no_extra_op
+  mov bx, extra_opcodes
+  add bx, cx
+  mov byte ah, [cs:bx] ; ah = extra_opcodes[instruction_index]
+  shl ah, 3 ; This goes in the middle reg/opcode field (after the low 3 bits which is the R/M field)
+  or al, ah ; Add it into the modRM byte
+  .no_extra_op:
+
+  ; Write the modRM byte
+  mov byte [es:di], al
+  inc di
+
+  ; TODO: check displacement
+
   jmp .next_line_or_done
 
-  ; TODO: use the appropriate lists to figure out the opcode
-  ;   - 16 bit args means opcode+1
-  ;   - SWAP_TWO_REG mem first is opcode+2 for 8bit and opcode+3 for 16bit
+  .short_reg_opcode:
+  ; Note: this is always IS_16, we don't need to add 1 to the opcode
+  mov bx, short_reg_opcodes
+  add bx, cx
+  mov byte al, [cs:bx] ; al = short_reg_opcodes[instruction_index]
+  add byte al, [bp+parse_arguments.MODRM] ; add the arg in (this is how short reg ops work)
+  ; Write the opcode to the output
+  mov byte [es:di], al
+  inc di
   jmp .next_line_or_done
+
+  .imm_opcode:
+  mov bx, not_implemented_error_str
+  mov cx, not_implemented_error_len
+  jmp .error_ret
 
   ; finally output the opcode bytes
   ;  - need to check the appropriate opcode list based on the args mode
 .next_line_or_done:
-  ;pop cx ; restore the line count
-  pop bx ; trash the line count
+  pop cx ; restore the line count
 
-  cmp byte [es:si], `0`
+  cmp byte [ds:si], 0
   je done_assembling
   ; if we're not at the end of the buffer, then we have a \n to skip
   inc si
@@ -183,26 +221,11 @@ assemble_loop:
   ret
 
 done_assembling:
-
-  ; Placeholder: output code to print the number of lines
-  mov ax, cs
-  mov ds, ax
-  mov si, placeholder_code
-  mov ax, placeholder_code_len
-  .write_placeholder:
-  mov byte bl, [ds:si]
-  mov byte [es:di], bl
-  inc di
-  inc si
-  dec ax
-  jnz .write_placeholder
-
-  ; If it weren't for the placeholder nothing should be above this
   test di, di
   jz no_code_error
 
-  ; TODO: Loop through the unresolved expressions and resolve them (and fill in
-  ;       in the values in the code)
+  ; TODO: When we add the symbol table: Loop through the unresolved expressions
+  ;       and resolve them (and fill in in the values in the code)
   ;       - Once we get here we'll have a resolved value for everything in the
   ;         symbol table
   ;       - We'll need to keep a list of pointers to expressions and pointers to
@@ -210,7 +233,7 @@ done_assembling:
   ;       - We'll write this list in the assemble_loop and probably save it on
   ;         the stack if we can
 
-  xor bp, bp
+  xor bx, bx
   ret
 
 no_code_error:
@@ -240,9 +263,9 @@ invalid_argument_error:
 ;  - [cs:bp] : the instruction list to search
 ;  - [ds:si] : the input code (which will be advanced by this function)
 ; Returns:
+;  - bx : 0 if successful, pointer to error message otherwise
 ;  - cx : the instruction index (or error message length on error)
-;  - [ds:si] : one char past the end of the instruction name
-;  - bp : 0 if successful, pointer to error message otherwise
+;  - [ds:si] : advanced to one char past the end of the instruction name
 search_instructions:
   push di ; save the output code location
 
@@ -250,8 +273,7 @@ search_instructions:
   xor cx, cx ; the instruction index
   xor bx, bx ; the length of the current instruction string in the list
 
-  .next_char:
-
+.next_char:
   inc di ; increase the offset to read from (start at 1)
   mov byte ah, [ds:si] ; save the current char we're searching
 
@@ -263,60 +285,56 @@ search_instructions:
   sub ah, 'a'-'A' ; Save an add instruction to undo the sub ah, 'A' with algebra
   cmp ah, 'z'-'a'
   jbe .is_letter
-  ; [es:si] is not a letter (could be \0 or \n)
+  ; [ds:si] is not a letter (could be \0 or \n)
 
   dec di
-  jz .error ; TODO: maybe syntax error, first char wasn't a letter
+  jz .error
   cmp bx, di ; if the last one had the same length as the source code, then we're done
   je .found_instruction
-  .error:
-  pop di ; clear the stack
-  mov bp, instruction_not_found_error_str
-  mov cx, instruction_not_found_error_len
-  ret
 
   .is_letter:
   add ah, 'a' ; Turn it back into the ascii char instead of the letter number
 
   inc si ; End one past the end of the instruction
   ; fallthrough
-  .check_nth_char:
+.check_nth_char:
   ; bx = size of the current instruction string in the list
   mov byte bl, [cs:bp]
 
   test bl, bl ; if we hit the end of the list we didn't get a match
   jnz .not_end
-
-  pop di ; clear the stack
-  mov bp, instruction_not_found_error_str
-  mov cx, instruction_not_found_error_len
-  ret
+  jmp .error
   .not_end:
 
   ; If the source code instruction is longer than the one in the list, skip it
   cmp di, bx
   ja .next_instruction
-
   ; If the Nth char matches now we need to check the next one
   cmp byte [cs:bp+di], ah
   je .next_char
 
-  ; fallthrough
+  ; fallthrough (no match)
   .next_instruction:
   add bp, bx ; Keep going to the next instruction in the list
   inc bp ; +1 to skip the size byte
   inc cx
   jmp .check_nth_char
+
   .found_instruction:
   pop di ; restore the output code location
-  xor bp, bp
+  xor bx, bx
+  ret
+  .error:
+  pop di ; clear the stack
+  mov bx, instruction_not_found_error_str
+  mov cx, instruction_not_found_error_len
   ret
 
 ; Search either reg_8_addressing or reg_16_addressing for a match in [ds:si].
 ; Leaves si unchanged.
 ;
 ; Args:
-;  - bp : the register list to search (assumes each row is 2 bytes)
+;  - bx : the register list to search (assumes each row is 2 bytes)
 ; Returns:
 ;  - cx : -1 if not found, the index otherwise
 search_registers:
@@ -335,24 +353,52 @@ search_registers:
   .found:
   ret
 
+; TODO: extra references to the intel manual
+;  - Instruction format 2.1 Fig 2-1
+;    - ModRM 2.1.3
+;  - ModRM Table 2.1.5 Fig 2-1
+;  - How to read the tables in the instruction reference 3.1. Especially 3.1.1.3
+
+; parse_arguments return flags
+IS_16: equ 0x01 ; This bit is 0 for 8 bit and 1 for 16 bit (if 16 bit add 1 to the opcode)
+IS_IMM: equ 0x02 ; This bit is 0 for reg_opcodes and 1 for immediate_opcodes
+USE_EXTRA_OP: equ 0x04 ; If this bit is 1, we need to add the extra_opcode into the modRM byte
+USE_SHORT_REG: equ 0x08 ; If this bit is 1, the modRM byte is just the register code to add to short_reg_opcodes
+USE_SWAP_OPCODE: equ 0x10 ; Set to 1 if it's a [reg, reg/mem] instruction (add 2 to the opcode value). Note: IS_IMM must be 0.
+USE_SHORT_SHIFT: equ 0x20 ; If 1, then this is a shift [r/m, 1] or [r/m, cl]. The correct opcode is in the first byte of immediate.
+IS_FAR_JUMP: equ 0x40 ; TODO
+IS_NO_ARG: equ 0x80
+
 ; Parse and verify the arguments based on the args flags in dx
-; TODO: seems like this should output the args encoding somewhere too, but we
-;       don't know if the opcode is 1 or 2 bytes yet
-; TODO: How do we make the segment prefix work with the above idea? We'll find
-;       it in this function
 ;
 ; Args:
 ;  - dx : the supported_args flags for this instruction
 ;  - [ds:si] : the input code (which will be advanced by this function)
+;  - [es:di] : the output pointer (we might write a segment prefix and advance)
 ; Returns:
-;  - dx : the flags for the argument type actually used
-;  - bx : pointer on the stack to the args encoding in the order of:
+;  - bp : pointer on the stack to the args encoding in the order of:
 ;         modRM, immediate, displacement. Which are present depends on dx.
-;  - bp : 0 if sucessful, pointer to error string if not
+;  - bx : 0 if sucessful, pointer to error string if not
 ;  - cx : unchanged if sucessful, error string length if not
 parse_arguments:
-  ; TODO: save cx
-  ; TODO: check the dx flags in all the cases
+  .STACK_SIZE: equ 1+1+1+2+2+2 +1 ; out_flags, segment-prefix, modRM, immediate, displacement, cx +1 for word alignment
+  .OUT_FLAGS: equ 0
+  .SEGMENT_PREFIX: equ 1
+  .MODRM: equ 2
+  .IMMEDIATE: equ 3
+  .DISPLACEMENT: equ 5
+  ; Zero the memory and move the stack pointer
+  push 0 ; displacement
+  push 0 ; immediate
+  push 0 ; modrm, segment_prefix
+  push 0 ; out_flags, 0x00
+  mov bp, sp ; save the base to reference the variables from
+  push cx ; save the instruction index
+  ; Note: no need to dec bp because it's all 0 and we want it word aligned anyway
+
+  ; TODO: check for "word" or "byte"
+
+.first_arg:
   call skip_spaces
 
   cmp byte [ds:si], 0
@@ -366,101 +412,253 @@ parse_arguments:
   jmp .no_arg
   .not_comment:
 
-  ; Check for an immediate
-  ; TODO: char literal support
-  cmp byte [ds:si], '0'
-  jb .not_immediate
-  cmp byte [ds:si], '9'
-  ja .not_immediate
-  ; TODO: Parse immediate value
-  mov bp, not_implemented_error_str
-  mov cx, not_implemented_error_len
-  ret
-  .not_immediate:
-
   ; Check for memory addressing mode
   cmp byte [ds:si], '['
-  je .mem_mode
+  je .first_mem
 
   ; Check for an 8 bit register name
   mov bx, reg_8_addressing
   call search_registers
   cmp cx, -1
-  jne .reg_8
+  jne .first_reg ; Leave IS_16 0
   ; Check for a 16 bit register name
   mov bx, reg_16_addressing
   call search_registers
   cmp cx, -1
-  jne .reg_16
+  je .not_first_reg
+  or byte [bp+.OUT_FLAGS], IS_16 ; set the 16 bit flag
+  jmp .first_reg
+  .not_first_reg:
 
-  mov cx, 0xFFFF
-  call debug_print_hex
-
-  ; TODO: check the symbol table
-  mov bp, not_implemented_error_str
+  mov bx, not_implemented_error_str
   mov cx, not_implemented_error_len
+  add sp, .STACK_SIZE
   ret
 
-; TODO: reg_8 and reg_16 should be the same except 16 needs opcode+1
-.reg_8:
+; TODO: if the mov segment flag is set, check for segment registers
+
+; TODO: call parse_expression
+; TODO: if not error write the immediate to the output and set the flags
+
+.first_mem:
+  call parse_mem_arg
+  test cx, cx ; check for errors
+  jnz .invalid_memory_deref
+    ; We can only have the first arg be a memory arg if we're one of these
+  test dx, (ONE_REG|TWO_REG|REG_IMM|SHIFT)
+  jz .invalid_argument_error
+  ; Save the results from parse_mem_arg to the output
+  mov byte [bp+.SEGMENT_PREFIX], al
+  mov byte [bp+.MODRM], ah
+  mov word [bp+.DISPLACEMENT], bx
+  ; No out_flags for this, we just check ModRM and for 0 in the segment byte
+  jmp .maybe_second_arg
+
+.first_reg:
   add si, 2 ; skip the register name
+  ; Make sure we're allowed to have a first arg as a register
+  test dx, (ONE_REG|TWO_REG|REG_IMM|SWAP_TWO_REG|SHORT_REG|SHORT_REG_AL_ONLY|SHORT_REG_DX_ONLY|SHIFT)
+  jz .invalid_argument_error
 
-  call debug_print_hex
+  ; Set the ModRM byte to Register mode and the r/m field to the register
+  ; Note if we see a memory arg after this, the reg code will be moved up to the reg/opcode field
+  mov al, MOD_REG
+  or al, cl
+  mov byte [bp+.MODRM], al
+  ; Leave IS_IMM on 0
+  jmp .maybe_second_arg
 
-  ; mov dx, TODO output args
-  jmp .next_arg
+.no_arg:
+  test dx, NO_ARG
+  jz .invalid_argument_error
+  mov byte [bp+.OUT_FLAGS], IS_NO_ARG
+  jmp .done
 
-.reg_16:
-  add si, 2 ; skip the register name
+.maybe_second_arg:
+  cmp byte [ds:si], ','
+  je .second_arg
 
-  call debug_print_hex
+  ; Has only one arg, finish up.
+  ;  - Do the final supported_args checks
+  ;  - Switch to SHORT_REG if we can
+  ;  - Special case for SHORT_REG_DX_ONLY (in and out instructions)
 
-  ; mov dx, TODO output args
-  jmp .next_arg
+  test byte [bp+.OUT_FLAGS], IS_IMM
+  jnz .is_one_imm
 
-.mem_mode:
+  ; .is_one_reg:
+  test byte [bp+.OUT_FLAGS], IS_16
+  jnz .one_reg16
+  ; .one_reg8
+  test dx, REG_8
+  jz .invalid_argument_error
+  jmp .not_short_reg ; short reg is 16bit only
+  .one_reg16:
+
+  test dx, SHORT_REG_DX_ONLY ; check this first because it won't have REG_16
+  jnz .short_reg_dx_only
+  test dx, REG_16
+  jz .invalid_argument_error
+  jmp .check_short_reg
+
+  .is_one_imm:
+  test byte [bp+.OUT_FLAGS], IS_16
+  jnz .one_imm16
+  ; .one_imm8
+  test dx, IMM_8
+  jz .invalid_argument_error
+  jmp .finish_one_arg
+  .one_imm16:
+  test dx, IMM_16
+  jz .invalid_argument_error
+  jmp .finish_one_arg
+
+  .check_short_reg:
+  test dx, SHORT_REG
+  jz .not_short_reg
+  or byte [bp+.OUT_FLAGS], USE_SHORT_REG ; Set the out flag for short reg
+  and byte [bp+.MODRM], 0x07 ; Clear everything but the r/m field so we can add this byte to the short_reg_opcode
+  jmp .finish_one_arg
+  .not_short_reg:
+  or byte [bp+.OUT_FLAGS], USE_EXTRA_OP ; One register arg instructions need the extra op
+  jmp .finish_one_arg
+
+  .short_reg_dx_only:
+  ; TODO requires the byte or word prefix
+  mov bx, not_implemented_error_str
+  mov cx, not_implemented_error_len
+  add sp, .STACK_SIZE
+  ret
+
+  .finish_one_arg:
+  ; Clear the rest of the line and move on
+  call skip_spaces
+  cmp byte [ds:si], 0
+  je .done
+  cmp byte [ds:si], `\n`
+  je .done
+  cmp byte [ds:si], ';'
+  ; TODO: special error message
+  jne .syntax_error ; if we're not at the end of the line and it's not a comment, we have junk at the end of the line
+  call skip_to_end_of_line
+  jmp .done
+
+.second_arg: ; TODO
+  mov bx, not_implemented_error_str
+  mov cx, not_implemented_error_len
+  add sp, .STACK_SIZE
+  ret
+
+  ;inc si ; skip the comma
+
+  ;call skip_spaces
+  ;cmp byte [ds:si], 0
+  ;je .syntax_error
+  ;cmp byte [ds:si], `\n`
+  ;je .syntax_error
+
+  ;; Check for memory addressing mode
+  ;cmp byte [ds:si], '['
+  ;jne .not_memory
+  ;; TODO: check if we've already seen a memory arg, then error
+  ;call parse_mem_arg
+  ;; TODO: check for segment prefix
+  ;; TODO: copy modRM into the result
+  ;; TODO: set the return flags
+  ;.not_memory:
+
+  ;; Check for an 8 bit register name
+  ;mov bx, reg_8_addressing
+  ;call search_registers
+  ;cmp cx, -1
+  ;jne .reg_8
+  ;; Check for a 16 bit register name
+  ;mov bx, reg_16_addressing
+  ;call search_registers
+  ;cmp cx, -1
+  ;jne .reg_16
+
+  ;; TODO: if the mov segment flag is set, check for segment registers
+
+  ;call parse_expression
+  ;; TODO: if not error write the immediate to the output and set the flags
+  ;jmp .done
+
+  ;jmp .syntax_error
+
+  .done:
+  ; bp is already the output we want
+  pop cx ; restore the line count
+  xor bx, bx ; no error
+  add sp, .STACK_SIZE-2
+  ret
+
+  .invalid_argument_error:
+  mov bx, invalid_argument_error_str
+  mov cx, invalid_argument_error_len
+  add sp, .STACK_SIZE
+  ret
+
+  .invalid_memory_deref:
+  mov bx, invalid_memory_deref_error_str
+  mov cx, invalid_memory_deref_error_len
+  add sp, .STACK_SIZE
+  ret
+
+  .syntax_error:
+  mov bx, syntax_error_str
+  mov cx, syntax_error_len
+  add sp, .STACK_SIZE
+  ret
+
+; Parse a memory addressing argument. Assumes you've already checked for '['.
+;
+; Returns
+;  - al : the segment prefix or 0 if there isn't one
+;  - ah : the modRM byte
+;  - bx : the displacement if there is any
+;  - cx : 0 if success, 1 if error
+parse_mem_arg:
+  push bp ; save the parse_arguments pointer
+  push dx ; save the instruction flags
   inc si ; skip the [
   cmp byte [ds:si], 0
-  je .syntax_error
+  je .error
 
   ; Check if we have a segment register prefix
+  xor ax, ax ; clear the segment and modrm output
   mov bx, segment_prefixes-3
   .check_segment_loop:
   add bx, 3
-  mov word ax, [cs:bx]
-  test ax, ax
+  mov word dx, [cs:bx]
+  test dx, dx
   jz .no_segment_prefix ; We hit the end of the list
-  cmp word ax, [ds:si]
+  cmp word dx, [ds:si]
   jne .check_segment_loop
   ; We found a segment register
   add si, 2 ; Skip over the segment register name
   ; Check for and skip the required colon
   cmp byte [ds:si], ':'
-  jne .syntax_error
+  jne .error
   inc si ; skip the colon
-  ; TODO: need to do something with the return values so after this we know
-  ;       where to write the opcode
-  ; Lookup and write out the prefix byte
-  mov byte al, [cs:bx+2]
-  mov cl, al
-  call debug_print_hex
-  mov byte [es:di], al
+  mov byte al, [cs:bx+2] ; Lookup and write out the prefix byte
   .no_segment_prefix:
+  ; ax must now be saved
 
   ; Search the list of valid memory derefrence operands
   mov cx, -1
   mov bx, mem_addressing-1
   .check_next_mem_string:
-  mov bp, si
+  mov bp, si ; Reset to the beginning of the mem arg for the next element
   inc bx ; skip to the next mem operand to check
   inc cx ; count the index for when we get a match
   cmp byte [cs:bx], 0
-  je .invalid_memory_deref ; Hit the end of the list
+  je .error ; Hit the end of the list
   .check_mem_string:
-  mov byte al, [ds:bp]
-  cmp al, 0
+  mov byte dl, [ds:bp]
+  cmp dl, 0
   jz .next_mem_string ; End of the search string means no match
-  cmp byte al, [cs:bx]
+  cmp byte dl, [cs:bx]
   jne .next_mem_string
   inc bp
   inc bx
@@ -475,54 +673,41 @@ parse_arguments:
   jmp .next_mem_string
 
   .found_mem_match:
-  mov si, bp ; Set the read pointer to one after the last match
+  mov si, bp ; save the read pointer as the end of the mem arg
+  or ah, cl ; Write the r/m field (last 3 bits) with the arg we found
+  ; The mode field (upper 2 bits) is 0 for MOD_MEM so don't bother setting it
+
+  ; TODO: [bp] must have 1 byte of 0 displacement because with no displacement
+  ;       this actually encodes [disp16] i.e. absolute address
+  cmp cl, 6 ; [bp]
+  je .error
+
   ; Check for displacement
+  xor bx, bx ; clear the displacement output if there isn't any
   cmp byte [ds:si], '+'
   jne .no_displacement
-  ; TODO: parse displacement expression
-  mov bp, not_implemented_error_str
-  mov cx, not_implemented_error_len
-  ret
+  jmp .error ; TODO: implement
   .no_displacement:
 
-  ; End square brace is required
   cmp byte [ds:si], ']'
-  jne .invalid_memory_deref
+  jne .error ; End square brace is required
   inc si ; skip the ]
 
-  call debug_print_hex
-
-  ; mov dx, TODO output args
-  jmp .next_arg
-
-.no_arg:
-  test dx, NO_ARG
-  jz .invalid_argument_error
-
-  mov dx, NO_ARG
-  xor bp, bp
+  pop dx ; restore the instruction flags
+  pop bp ; restore the parse_arguments pointer
+  xor cx, cx ; success
   ret
 
-.next_arg:
-  ; TODO: check for comma to see if it's one arg or two
-  ; TODO: jump back up and do the same thing again, but no_arg isn't possible now
-  mov bp, not_implemented_error_str
-  mov cx, not_implemented_error_len
+  .error:
+  pop dx ; restore the instruction flags
+  pop bp ; restore the parse_arguments pointer
+  mov cx, 1
   ret
 
-.invalid_argument_error:
-  mov bp, invalid_argument_error_str
-  mov cx, invalid_argument_error_len
-  ret
-
-.syntax_error:
-  mov bp, syntax_error_str
-  mov cx, syntax_error_len
-  ret
-
-.invalid_memory_deref:
-  mov bp, invalid_memory_deref_error_str
-  mov cx, invalid_memory_deref_error_len
+parse_expression:
+  ; TODO: hex numbers
+  ; TODO: char literals
+  ; TODO: check the symbol table
   ret
 
 skip_spaces:
@@ -561,42 +746,14 @@ syntax_error_len: equ $-syntax_error_str
 invalid_memory_deref_error_str: db "Invalid memory deref operand: not on the list or spaces around +."
 invalid_memory_deref_error_len: equ $-invalid_memory_deref_error_str
 
-; Currently prints the instruction index, then the supported_args flags
-placeholder_code:
-; call 0x07C0:print_hex
-db 0x9A
-dw print_hex_retf
-dw 0x07C0
-; mov cx, dx
-db 0x89,0xD1
-; call 0x07C0:print_hex
-db 0x9A
-dw print_hex_retf
-dw 0x07C0
-
-; The print "Hello!" code from the bootstrap-hex gif (needs ds set right)
-;db 0xbe,0x14,0x00,0xb1,0x06,0xb4,0x0e,0x3e,0x8a,0x04,0xcd,0x10,0x46,0xfe,0xc9,0x84
-;db 0xc9,0x75,0xf2,0xf4,0x48,0x65,0x6c,0x6c,0x6f,0x21
-
-; Simple. Just print '!'
-;db 0xB4,0x0E
-;db 0xB0,0x21
-;db 0x66,0x31,0xDB
-;db 0xCD,0x10
-
-; jmp $
-db 0xEB
-db 0xFE
-placeholder_code_len: equ $-placeholder_code
-
 ; MOD_* constants and *_addressing constants come from:
 ; Vol 2. Chapter 2.1.5 Table 2-1
 
 ; The first 2 bits of the ModRM byte
-%define MOD_MEM 0x00
-%define MOD_MEM_DISP8 0x40
-%define MOD_MEM_DISP16 0x80
-%define MOD_REG 0xC0
+MOD_MEM:        equ 0x00
+MOD_MEM_DISP8:  equ 0x40
+MOD_MEM_DISP16: equ 0x80
+MOD_REG:        equ 0xC0
 
 ; In order. Count to get the 3 bit R/M field value
 mem_addressing:
@@ -800,24 +957,16 @@ IMM_8:        equ 0x0010 ; 8 bit immediate only
 ONE_IMM:      equ IMM_8|IMM_16
 TWO_REG:      equ 0x0020 ; reg/mem, reg
 REG_IMM:      equ 0x0040 ; reg/mem, 8 bit or 16 bit (might have a short_reg_opcode)
-SWAP_TWO_REG: equ 0x0080 ; reg, rem/mem (encoded with opcode+=2)
+SWAP_TWO_REG: equ 0x0080 ; reg, mem (encoded with opcode+=2)
 ; Less common argument options
-SHORT_REG:         equ 0x0100
-SHORT_REG_AL_ONLY: equ 0x0200
-SHORT_REG_DX_ONLY: equ 0x0400
+SHORT_REG:         equ 0x0100 ; A 16 bit reg arg can be added into the short_reg_opcode to save the modRM byte
+SHORT_REG_AL_ONLY: equ 0x0200 ; only al/ax, imm
+SHORT_REG_DX_ONLY: equ 0x0400 ; only allows a single arg of dx
 DEFAULT_10:        equ 0x0800 ; aad and aam have a special default arg of 10 and 8bit imm otherwise
-MEMORY_ONLY:       equ 0x1000
+ARG2_MEMORY_ONLY:  equ 0x1000 ; reg, mem only (second arg cannot be reg). Implies TWO_REG.
 SHIFT:             equ 0x2000 ; reg/mem, imm8 or reg/mem, 1 or reg/mem, cl
 FAR_JUMP:          equ 0x4000
 MOV_SEGMENT:       equ 0x8000
-
-; Extra overloaded flags for parse_arguments return values only
-SHIFT_ONE:               equ 0x0200
-SHIFT_CL:                equ 0x0400
-MOV_READ_SEGMENT:        equ 0x0800
-MOV_WRITE_SEGMENT:       equ 0x1000
-UNRESOLVED_DISPLACEMENT: equ 0x2000 ; the displacement value is a pointer to the expression to resolve later
-UNRESOLVED_IMMEDIATE:    equ 0x8000 ; the immediate value is a pointer to the expression to resolve later
 
 ; All information below is copied out of Vol 2 and the pages for each instruction
 
@@ -861,14 +1010,14 @@ dw IMM_8, ; int
 dw NO_ARG, ; into
 dw NO_ARG, ; iret
 dw NO_ARG, ; lahf
-dw TWO_REG|MEMORY_ONLY, ; lds
-dw TWO_REG|MEMORY_ONLY, ; lea
-dw TWO_REG|MEMORY_ONLY, ; les
+dw TWO_REG|ARG2_MEMORY_ONLY, ; lds
+dw TWO_REG|ARG2_MEMORY_ONLY, ; lea
+dw TWO_REG|ARG2_MEMORY_ONLY, ; les
 dw NO_ARG, ; lock
 dw IMM_8, ; loop
 dw IMM_8, ; loope
 dw IMM_8, ; loopne
-dw TWO_REG|SWAP_TWO_REG|REG_IMM|SHORT_REG|MOV_SEGMENT,
+dw TWO_REG|SWAP_TWO_REG|REG_IMM|SHORT_REG|MOV_SEGMENT, ; mov
 dw ONE_REG, ; mul
 dw ONE_REG, ; neg
 dw NO_ARG, ; nop
@@ -934,7 +1083,7 @@ db 0x6D, ; insw
 db 0x00, ; int
 db 0xCE, ; into
 db 0xCF, ; iret
-db 0x00, ; lahf
+db 0x9F, ; lahf
 db 0xC5, ; lds
 db 0x8D, ; lea
 db 0xC4, ; les
