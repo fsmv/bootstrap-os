@@ -136,10 +136,11 @@ assemble_loop:
   test bx, bx
   jnz .error_ret
 
-  test byte [bp+parse_arguments.OUT_FLAGS], IS_IMM
-  jnz .imm_opcode
+  ; Note: short_reg can happen for reg, imm instructions
   test byte [bp+parse_arguments.OUT_FLAGS], USE_SHORT_REG
   jnz .short_reg_opcode
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_IMM
+  jnz .imm_opcode
   ; fallthrough
 
   .reg_opcode:
@@ -152,7 +153,7 @@ assemble_loop:
   inc di
   .no_segment_prefix:
 
-  ; Write the opcode to the output
+  ; Get the opcode value
   mov bx, reg_opcodes
   add bx, cx
   mov byte al, [cs:bx] ; al = reg_opcodes[instruction_index]
@@ -197,12 +198,52 @@ assemble_loop:
   ; Write the opcode to the output
   mov byte [es:di], al
   inc di
+
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_IMM
+  jnz .write_imm
+
   jmp .next_line_or_done
 
   .imm_opcode:
-  mov bx, not_implemented_error_str
-  mov cx, not_implemented_error_len
-  jmp .error_ret
+  ; Get the opcode value
+  mov bx, immediate_opcodes
+  add bx, cx
+  mov byte al, [cs:bx] ; al = reg_opcodes[instruction_index]
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_16
+  jz .8bit_imm_opcode
+  inc al ; for 16 bit we need opcode+1
+  .8bit_imm_opcode:
+  ; Write the opcode to the output
+  mov byte [es:di], al
+  inc di
+
+  test byte [bp+parse_arguments.OUT_FLAGS], USE_EXTRA_OP
+  jz .no_modrm
+  ; This happens when we have a reg, imm instruction that's not SHORT_REG
+  mov byte al, [bp+parse_arguments.MODRM]
+  ; Write the extra opcode into ModRM (copy pasted from .reg_opcode)
+  mov bx, extra_opcodes
+  add bx, cx
+  mov byte ah, [cs:bx] ; ah = extra_opcodes[instruction_index]
+  shl ah, 3 ; This goes in the middle reg/opcode field (after the low 3 bits which is the R/M field)
+  or al, ah ; Add it into the modRM byte
+  ; Write the ModRM to the output
+  mov byte [es:di], al
+  inc di
+  .no_modrm:
+
+  .write_imm:
+  mov word dx, [bp+parse_arguments.IMMEDIATE]
+  ; x86 is little endian so write the low byte first
+  mov byte [es:di], dl
+  inc di
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_16
+  jz .only_one_byte ; TODO: where does the error go if we have a too big imm
+  mov byte [es:di], dh
+  inc di
+  .only_one_byte:
+
+  jmp .next_line_or_done
 
   ; finally output the opcode bytes
   ;  - need to check the appropriate opcode list based on the args mode
@@ -430,15 +471,13 @@ parse_arguments:
   jmp .first_reg
   .not_first_reg:
 
-  mov bx, not_implemented_error_str
-  mov cx, not_implemented_error_len
-  add sp, .STACK_SIZE
-  ret
-
 ; TODO: if the mov segment flag is set, check for segment registers
 
-; TODO: call parse_expression
-; TODO: if not error write the immediate to the output and set the flags
+  call parse_expression
+  cmp bx, 0
+  je .one_imm
+  ; TODO: check for unresolved expression when we have a symbol table
+  jmp .error_ret
 
 .first_mem:
   call parse_mem_arg
@@ -467,6 +506,19 @@ parse_arguments:
   mov byte [bp+.MODRM], al
   ; Leave IS_IMM on 0
   jmp .maybe_second_arg
+
+.one_imm:
+  test dx, ONE_IMM
+  jz .invalid_argument_error
+
+  mov word [bp+.IMMEDIATE], ax ; write out the immediate value
+  or byte [bp+.OUT_FLAGS], IS_IMM
+  test ax, 0xFF00 ; check if the upper bits are 0
+  jz .zero_high_bits
+  ; TODO: error if we asked for "byte"
+  or byte [bp+.OUT_FLAGS], IS_16
+  .zero_high_bits: ; just leave IS_16 0 (or 1 if the "word" keyword was used)
+  jmp .maybe_second_arg ; need to error if there's another arg and skip the tail
 
 .no_arg:
   test dx, NO_ARG
@@ -608,6 +660,7 @@ parse_arguments:
   .syntax_error:
   mov bx, syntax_error_str
   mov cx, syntax_error_len
+  .error_ret:
   add sp, .STACK_SIZE
   ret
 
@@ -704,10 +757,71 @@ parse_mem_arg:
   mov cx, 1
   ret
 
+; Returns:
+;  - ax : the 8 bit or 16 bit value,
+;         or pointer in the input buffer to the unresolved expression
+;  - bx : 0 if success, 1 if the expression is unresolved, pointer to error string otherwise
+;  - cx : length of error string
 parse_expression:
-  ; TODO: hex numbers
   ; TODO: char literals
   ; TODO: check the symbol table
+
+  cmp word [ds:si], '0x' ; note: because of the \0 we can compare one past the end
+  je .hex_literal
+
+  mov bx, not_implemented_error_str
+  mov cx, not_implemented_error_len
+  ret
+
+.hex_literal:
+  add si, 2 ; skip the 0x
+  xor ax, ax ; clear the output
+  mov cl, 3*4 ; the shift position for the current char (starts with the most significant bits, and one nibble is 4 bits)
+
+  .next_hex_char:
+  mov byte bl, [ds:si]
+
+  sub bl, 'a'
+  cmp bl, 'f'-'a'
+  jbe .hex_letter ; jump if al is between 'a' and 'f'
+  sub bl, 'A'-'a' ; -'a' compensates for the sub al, 'a' instruction above
+  cmp bl, 'F'-'A'
+  jbe .hex_letter
+  sub bl, '0'-'A'
+  cmp bl, '9'-'0'
+  jbe .hex_number
+
+  add cl, 4 ; uncount the non-hex char so we can shift correctly in .done
+  ; If it isn't a valid char we're just done with the value, we don't want an
+  ; error because there's lots of chars it could be if it's in an expression etc
+  jmp .done
+
+  .hex_letter:
+  add bl, 0xA ; it's the hex letter - 'A' so it's the value - 0xA
+  ; fallthrough
+  .hex_number: ; it's actually already the value
+  cmp cl, 0
+  jl .hex_too_big ; signed compare lets us know if we went too far
+
+  ; write the nibble value to our output
+  xor bh, bh ; clear the upper bits so we can shift into them
+  shl bx, cl ; move the bits for the nibble into the right position
+  or ax, bx ; write the char in the right place in the output
+
+  inc si ; increment the read pointer only at the end, we want to stop one after the hex char above
+  ; Count the char we just wrote
+  sub cl, 4 ; next char will be 4 bits lower
+  jmp .next_hex_char ; we want to know if it's a hex char or not so just always check
+
+  .hex_too_big:
+  ; 16 bit assembly means max 4 hex chars
+  mov bx, hex_constant_too_big_str
+  mov cx, hex_constant_too_big_len
+  ret
+
+  .done:
+  shr ax, cl ; if we didn't read 4 chars, we have to shift it over
+  xor bx, bx
   ret
 
 skip_spaces:
@@ -745,6 +859,9 @@ syntax_error_len: equ $-syntax_error_str
 
 invalid_memory_deref_error_str: db "Invalid memory deref operand: not on the list or spaces around +."
 invalid_memory_deref_error_len: equ $-invalid_memory_deref_error_str
+
+hex_constant_too_big_str: db "Hex constants can only be 16 bit or 4 chars."
+hex_constant_too_big_len: equ $-hex_constant_too_big_str
 
 ; MOD_* constants and *_addressing constants come from:
 ; Vol 2. Chapter 2.1.5 Table 2-1
@@ -1056,8 +1173,8 @@ dw REG_IMM|TWO_REG|SWAP_TWO_REG|SHORT_REG_AL_ONLY, ; xor
 
 reg_opcodes:
 db 0x37, ; aaa
-db 0xD5, ; aad
-db 0xD4, ; aam
+db 0x00, ; aad
+db 0x00, ; aam
 db 0x3F, ; aas
 db 0x10, ; adc
 db 0x00, ; add (base value is 0)
@@ -1126,13 +1243,13 @@ db 0x30, ; xor
 
 immediate_opcodes:
 db 0x00, ; aaa
-db 0x00, ; aad
-db 0x00, ; aam
+db 0xD5, ; aad
+db 0xD4, ; aam
 db 0x00, ; aas
 db 0x80, ; adc
 db 0x80, ; add
 db 0x80, ; and
-db 0xE8, ; call
+db 0xE7, ; call (opcode-1 since it's 16bit only)
 db 0x00, ; cbw
 db 0x00, ; clc
 db 0x00, ; cld
@@ -1172,12 +1289,12 @@ db 0x00, ; outsb
 db 0x00, ; outsw
 db 0x00, ; pop
 db 0x00, ; popf
-db 0x68, ; push
+db 0x67, ; push (opcode-1 since it's 16bit only)
 db 0x00, ; pushf
 db 0xC0, ; rcl
 db 0xC0, ; rcr
-db 0xC2, ; ret
-db 0xCA, ; retf
+db 0xC1, ; ret (opcode-1 since it's 16bit only)
+db 0xC9, ; retf (opcode-1 since it's 16bit only)
 db 0xC0, ; rol
 db 0xC0, ; ror
 db 0x00, ; sahf
