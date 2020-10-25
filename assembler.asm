@@ -965,14 +965,56 @@ parse_mem_arg:
 ;  - bx : 0 if success, 1 if the expression is unresolved, pointer to error string otherwise
 ;  - cx : length of error string
 parse_expression:
-  ; TODO: char literals
   ; TODO: check the symbol table
 
   cmp word [ds:si], '0x' ; note: because of the \0 we can compare one past the end
   je .hex_literal
 
+  cmp byte [ds:si], "'"
+  je .char_literal
+  cmp byte [ds:si], '"'
+  je .char_literal
+
   mov bx, not_implemented_error_str
   mov cx, not_implemented_error_len
+  ret
+
+.char_literal:
+  mov bl, [ds:si] ; save the string start char to match with the ending
+  inc si ; skip the string starter char
+
+  ; If we see the string ending, it's an empty string
+  cmp [ds:si], bl
+  je .invalid_str_len
+
+  ; Save the first char of the string
+  mov ah, [ds:si]
+  inc si
+
+  ; If we see the ending now, we only had one char
+  cmp [ds:si], bl
+  je .one_char
+
+  ; Save the second char of the string
+  mov al, [ds:si]
+  inc si
+
+  ; Now if we don't see the ending it's an error
+  cmp [ds:si], bl
+  jne .invalid_str_len
+  jmp .done_char_literal
+
+  .one_char:
+  shr ax, 8 ; move the first char to the low bits
+  ; fallthrough
+  .done_char_literal:
+  inc si ; skip the string ending
+  xor bx, bx ; success
+  ret
+
+  .invalid_str_len:
+  mov bx, invalid_string_length_str
+  mov cx, invalid_string_length_len
   ret
 
 .hex_literal:
@@ -1064,6 +1106,9 @@ invalid_memory_deref_error_len: equ $-invalid_memory_deref_error_str
 
 hex_constant_too_big_str: db "Hex constants can only be 16 bit or 4 chars."
 hex_constant_too_big_len: equ $-hex_constant_too_big_str
+
+invalid_string_length_str: db "Character literals must be exactly 1 or 2 chars."
+invalid_string_length_len: equ $-invalid_string_length_str
 
 ; MOD_* constants and *_addressing constants come from:
 ; Vol 2. Chapter 2.1.5 Table 2-1
