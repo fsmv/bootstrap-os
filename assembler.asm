@@ -82,18 +82,34 @@ assemble_loop:
   test bx, bx
   jnz .error_ret
 
-  ; TODO: needs 8/16 bit, is unresolved expression
+  mov al, JMP_NEAR_OPCODE ; default so near and short can share code
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_IMM
+  jnz .jmp_imm
+  ; TODO: far jump
+  ; fallthrough
 
-  test dx, IMM_8
-  jnz .jmp_near
-  test dx, IMM_16
-  jnz .jmp_short
-  ; TODO: special case for labels
-  jmp invalid_argument_error
+  .jmp_reg:
+  call maybe_write_segment_prefix
+  ; Write the opcode
+  mov al, JMP_REG_OPCODE
+  mov [es:di], al
+  inc di
+  mov cx, JMP_EXTRA_INDEX ; this is so write_mem_reg can add the value into the modrm byte
+  call write_mem_reg
+  jmp .next_line_or_done
 
-  .jmp_near: ; TODO
-  .jmp_short: ; TODO
-
+  .jmp_imm:
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_16
+  jz .jmp_near
+  ; fallthrough (we have a 16 bit imm)
+  .jmp_short:
+  mov al, JMP_SHORT_OPCODE
+  ; fallthrough
+  .jmp_near:
+  ; Write the opcode
+  mov [es:di], al
+  inc di
+  call write_imm
   jmp .next_line_or_done
 
 .jcc_instruction:
@@ -107,18 +123,26 @@ assemble_loop:
   test bx, bx
   jnz .error_ret
 
-  ; TODO: use the jcc opcode list and is16
 
-  test dx, IMM_8
-  jnz .jcc_near
-  test dx, IMM_16
-  jnz .jcc_short
-  ; TODO: special case for labels
-  jmp invalid_argument_error
+  xor al, al ; clear the opcode value so we can add to it for the 16 bit case
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_16
+  jz .jcc_near
+  ; fallthrough (we have a 16 bit imm)
 
-  .jcc_near: ; TODO
-  .jcc_short: ; TODO
-
+  .jcc_short: ; 16 bit
+  mov byte [es:di], 0x0F ; Write the 16 bit jump prefix
+  inc di
+  mov al, 0x10 ; the offset for 16 bit jump opcodes
+  ; fallthrough
+  .jcc_near: ; 8 bit
+  ; Get the opcode value
+  mov bx, jcc_opcodes
+  add bx, cx
+  add byte al, [cs:bx] ; al += jcc_opcodes[instruction_index]
+  ; Write the opcode
+  mov byte [es:di], al
+  inc di
+  call write_imm
   jmp .next_line_or_done
 
 .normal_instruction:
@@ -144,15 +168,7 @@ assemble_loop:
   ; fallthrough
 
   .reg_opcode:
-
-  ; Write the segment prefix to the output if we have one
-  mov byte al, [bp+parse_arguments.SEGMENT_PREFIX]
-  test al, al
-  jz .no_segment_prefix
-  mov byte [es:di], al
-  inc di
-  .no_segment_prefix:
-
+  call maybe_write_segment_prefix
   ; Get the opcode value
   mov bx, reg_opcodes
   add bx, cx
@@ -169,24 +185,7 @@ assemble_loop:
   test byte [bp+parse_arguments.OUT_FLAGS], IS_NO_ARG
   jnz .next_line_or_done ; if it was a no_arg we have nothing else to write
 
-  mov byte al, [bp+parse_arguments.MODRM] ; read the modRM byte
-
-  ; Add the extra opcode into the modRM byte if we need to
-  test byte [bp+parse_arguments.OUT_FLAGS], USE_EXTRA_OP
-  jz .no_extra_op
-  mov bx, extra_opcodes
-  add bx, cx
-  mov byte ah, [cs:bx] ; ah = extra_opcodes[instruction_index]
-  shl ah, 3 ; This goes in the middle reg/opcode field (after the low 3 bits which is the R/M field)
-  or al, ah ; Add it into the modRM byte
-  .no_extra_op:
-
-  ; Write the modRM byte
-  mov byte [es:di], al
-  inc di
-
-  ; TODO: check displacement
-
+  call write_mem_reg
   jmp .next_line_or_done
 
   .short_reg_opcode:
@@ -200,8 +199,8 @@ assemble_loop:
   inc di
 
   test byte [bp+parse_arguments.OUT_FLAGS], IS_IMM
-  jnz .write_imm
-
+  jz .next_line_or_done
+  call write_imm
   jmp .next_line_or_done
 
   .imm_opcode:
@@ -232,21 +231,6 @@ assemble_loop:
   inc di
   .no_modrm:
 
-  .write_imm:
-  mov word dx, [bp+parse_arguments.IMMEDIATE]
-  ; x86 is little endian so write the low byte first
-  mov byte [es:di], dl
-  inc di
-  test byte [bp+parse_arguments.OUT_FLAGS], IS_16
-  jz .only_one_byte ; TODO: where does the error go if we have a too big imm
-  mov byte [es:di], dh
-  inc di
-  .only_one_byte:
-
-  jmp .next_line_or_done
-
-  ; finally output the opcode bytes
-  ;  - need to check the appropriate opcode list based on the args mode
 .next_line_or_done:
   pop cx ; restore the line count
 
@@ -394,6 +378,47 @@ search_registers:
   .found:
   ret
 
+write_imm:
+  mov word dx, [bp+parse_arguments.IMMEDIATE]
+  ; x86 is little endian so write the low byte first
+  mov byte [es:di], dl
+  inc di
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_16
+  jz .only_one_byte
+  mov byte [es:di], dh
+  inc di
+  .only_one_byte:
+  ret
+
+; Write the segment prefix to the output if we have one
+maybe_write_segment_prefix:
+  mov byte al, [bp+parse_arguments.SEGMENT_PREFIX]
+  test al, al
+  jz .no_segment_prefix
+  mov byte [es:di], al
+  inc di
+  .no_segment_prefix:
+  ret
+
+write_mem_reg:
+  mov byte al, [bp+parse_arguments.MODRM] ; read the modRM byte
+  ; Add the extra opcode into the modRM byte if we need to
+  test byte [bp+parse_arguments.OUT_FLAGS], USE_EXTRA_OP
+  jz .no_extra_op
+  mov bx, extra_opcodes
+  add bx, cx
+  mov byte ah, [cs:bx] ; ah = extra_opcodes[instruction_index]
+  shl ah, 3 ; This goes in the middle reg/opcode field (after the low 3 bits which is the R/M field)
+  or al, ah ; Add it into the modRM byte
+  .no_extra_op:
+
+  ; Write the modRM byte
+  mov byte [es:di], al
+  inc di
+
+  ; TODO: check displacement
+  ret
+
 ; TODO: extra references to the intel manual
 ;  - Instruction format 2.1 Fig 2-1
 ;    - ModRM 2.1.3
@@ -413,14 +438,14 @@ IS_NO_ARG: equ 0x80
 ; Parse and verify the arguments based on the args flags in dx
 ;
 ; Args:
-;  - dx : the supported_args flags for this instruction
+;  - dx : the supported_args flags for this instruction (left unchanged)
 ;  - [ds:si] : the input code (which will be advanced by this function)
 ;  - [es:di] : the output pointer (we might write a segment prefix and advance)
 ; Returns:
 ;  - bp : pointer on the stack to the args encoding in the order of:
 ;         modRM, immediate, displacement. Which are present depends on dx.
 ;  - bx : 0 if sucessful, pointer to error string if not
-;  - cx : unchanged if sucessful, error string length if not
+;  - cx : (opcode index) unchanged if sucessful, error string length if not
 parse_arguments:
   .STACK_SIZE: equ 1+1+1+2+2+2 +1 ; out_flags, segment-prefix, modRM, immediate, displacement, cx +1 for word alignment
   .OUT_FLAGS: equ 0
@@ -483,7 +508,7 @@ parse_arguments:
   call parse_mem_arg
   test cx, cx ; check for errors
   jnz .invalid_memory_deref
-    ; We can only have the first arg be a memory arg if we're one of these
+  ; We can only have the first arg be a memory arg if we're one of these
   test dx, (ONE_REG|TWO_REG|REG_IMM|SHIFT)
   jz .invalid_argument_error
   ; Save the results from parse_mem_arg to the output
@@ -537,6 +562,17 @@ parse_arguments:
 
   test byte [bp+.OUT_FLAGS], IS_IMM
   jnz .is_one_imm
+
+  ; Infer IS_16 if it's a mem instruction that only supports REG_16.
+  ; So we don't need the "word" specfier in this case. Nasm does this too.
+  mov al, byte [bp+.MODRM]
+  and al, 0xC0 ; we only want to check the first 2 bits (the mode field)
+  cmp al, MOD_REG
+  je .no_infer_mem16
+  test dx, REG_8
+  jnz .no_infer_mem16
+  or byte [bp+.OUT_FLAGS], IS_16
+  .no_infer_mem16:
 
   ; .is_one_reg:
   test byte [bp+.OUT_FLAGS], IS_16
@@ -1091,11 +1127,13 @@ SHIFT_ONE_OPCODE: equ 0xD0
 SHIFT_CL_OPCODE:  equ 0xD2
 JMP_SHORT_OPCODE: equ 0xEB
 JMP_NEAR_OPCODE:  equ 0xE9
+JMP_REG_OPCODE:   equ 0xFF
 READ_SEGMENT_OPCODE:  equ 0x8C
 WRITE_SEGMENT_OPCODE: equ 0x8E
 
-JCC_FLAGS equ ONE_IMM
-JMP_FLAGS equ ONE_IMM|ONE_REG|FAR_JUMP
+JCC_FLAGS: equ ONE_IMM
+JMP_FLAGS: equ ONE_IMM|REG_16|FAR_JUMP
+JMP_EXTRA_INDEX: equ byte JMP_EXTRA_ADDR-extra_opcodes ; Note: the opcodes are one byte each
 
 supported_args:
 dw NO_ARG, ; aaa
@@ -1382,6 +1420,10 @@ db 0x00, ; test (value 0)
 db 0x00, ; xchg
 db 0x00, ; xlatb
 db 0x06, ; xor
+; Hack: Put jmp at the end even though it's not in the search list,
+;       so that we can re-use write_mem_write to get this value
+JMP_EXTRA_ADDR:
+db 0x04, ; jmp
 
 short_reg_opcodes:
 db 0x00, ; aaa
