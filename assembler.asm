@@ -416,7 +416,22 @@ write_mem_reg:
   mov byte [es:di], al
   inc di
 
-  ; TODO: check displacement
+  ; Write the displacement if needed
+  mov word dx, [bp+parse_arguments.DISPLACEMENT]
+  and al, 0xC0 ; Clear everything but the mode field
+  cmp al, MOD_MEM_DISP8
+  je .write_disp_8
+  cmp al, MOD_MEM_DISP16
+  je .write_disp_16
+  ret ; no displacement
+
+  .write_disp_8:
+  mov byte [es:di], dl
+  inc di
+  ret
+  .write_disp_16:
+  mov word [es:di], dx
+  add di, 2
   ret
 
 ; TODO: extra references to the intel manual
@@ -777,17 +792,40 @@ parse_mem_arg:
   or ah, cl ; Write the r/m field (last 3 bits) with the arg we found
   ; The mode field (upper 2 bits) is 0 for MOD_MEM so don't bother setting it
 
-  ; TODO: [bp] must have 1 byte of 0 displacement because with no displacement
-  ;       this actually encodes [disp16] i.e. absolute address
-  cmp cl, 6 ; [bp]
-  je .error
+  ; TODO [disp16] i.e. absolute address
+  ; TODO: allow skipping spaces before this + and - should be allowed here
 
   ; Check for displacement
   xor bx, bx ; clear the displacement output if there isn't any
   cmp byte [ds:si], '+'
   jne .no_displacement
-  jmp .error ; TODO: implement
+  inc si ; skip the +
+  call skip_spaces
+
+  mov dx, ax ; save the segment prefix and modrm output
+  call parse_expression
+  cmp bx, 0
+  jne .error ; TODO: support unresolved expressions
+  mov bx, ax ; write the displacement output
+  mov ax, dx ; restore the segment prefix and modrm output
+  test bx, 0xFF00
+  jz .disp_8
+  .disp_16:
+  or ah, MOD_MEM_DISP16 ; set the mode in the modRM byte
+  jmp .no_displacement
+  .disp_8:
+  or ah, MOD_MEM_DISP8 ; set the mode in the modRM byte
+  ; fallthrough
   .no_displacement:
+
+  ; [bp] must have 1 byte of 0 displacement because with no displacement
+  cmp cl, 6 ; [bp]
+  jne .no_zero_displacement
+  test ah, 0xC0 ; first 2 bits, the mode field of the modRM byte
+  jnz .no_zero_displacement
+  ; if we're using [bp] and the first 2 bits are zero then we're in mem mode
+  or ah, MOD_MEM_DISP8 ; we need to write a 0 byte for displacement
+  .no_zero_displacement:
 
   cmp byte [ds:si], ']'
   jne .error ; End square brace is required
@@ -904,7 +942,7 @@ invalid_argument_error_len: equ $-invalid_argument_error_str
 syntax_error_str: db "Invalid syntax in instruction arguments."
 syntax_error_len: equ $-syntax_error_str
 
-invalid_memory_deref_error_str: db "Invalid memory deref operand: not on the list or spaces around +."
+invalid_memory_deref_error_str: db "Invalid memory deref operand."
 invalid_memory_deref_error_len: equ $-invalid_memory_deref_error_str
 
 hex_constant_too_big_str: db "Hex constants can only be 16 bit or 4 chars."
