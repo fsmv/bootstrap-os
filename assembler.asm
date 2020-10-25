@@ -123,7 +123,6 @@ assemble_loop:
   test bx, bx
   jnz .error_ret
 
-
   xor al, al ; clear the opcode value so we can add to it for the 16 bit case
   test byte [bp+parse_arguments.OUT_FLAGS], IS_16
   jz .jcc_near
@@ -173,11 +172,19 @@ assemble_loop:
   mov bx, reg_opcodes
   add bx, cx
   mov byte al, [cs:bx] ; al = reg_opcodes[instruction_index]
-  ; TODO USE_SWAP_REG means we need opcode+2 for 8bit and opcode+3 for 16bit
+
+  ; If we're using a swapped args we need opcode +2 for 8bit and +3 for 16bit
+  test byte [bp+parse_arguments.OUT_FLAGS], USE_SWAP_OPCODE
+  jz .not_swap_opcode
+  add al, 2
+  .not_swap_opcode:
+
+  ; For 16 bit we need opcode+1
   test byte [bp+parse_arguments.OUT_FLAGS], IS_16
   jz .8bit_reg_opcode
-  inc al ; for 16 bit we need opcode+1
+  inc al
   .8bit_reg_opcode:
+
   ; Write the opcode to the output
   mov byte [es:di], al
   inc di
@@ -189,15 +196,24 @@ assemble_loop:
   jmp .next_line_or_done
 
   .short_reg_opcode:
-  ; Note: this is always IS_16, we don't need to add 1 to the opcode
   mov bx, short_reg_opcodes
   add bx, cx
   mov byte al, [cs:bx] ; al = short_reg_opcodes[instruction_index]
   add byte al, [bp+parse_arguments.MODRM] ; add the arg in (this is how short reg ops work)
+
+  ; Unless we're in a special case short_reg we are always 16 bit so we don't need +1
+  test dx, SHORT_REG_AL_ONLY|SHORT_REG_DX_ONLY
+  jz .short_reg_opcode_done
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_16
+  jz .short_reg_opcode_done
+  inc al
+  .short_reg_opcode_done:
+
   ; Write the opcode to the output
   mov byte [es:di], al
   inc di
 
+  ; Only happens for SHORT_REG_AL_ONLY instructions
   test byte [bp+parse_arguments.OUT_FLAGS], IS_IMM
   jz .next_line_or_done
   call write_imm
@@ -230,6 +246,9 @@ assemble_loop:
   mov byte [es:di], al
   inc di
   .no_modrm:
+
+  call write_imm
+  jmp .next_line_or_done
 
 .next_line_or_done:
   pop cx ; restore the line count
@@ -554,10 +573,10 @@ parse_arguments:
   mov word [bp+.IMMEDIATE], ax ; write out the immediate value
   or byte [bp+.OUT_FLAGS], IS_IMM
   test ax, 0xFF00 ; check if the upper bits are 0
-  jz .zero_high_bits
+  jz .8bit_one_imm
   ; TODO: error if we asked for "byte"
   or byte [bp+.OUT_FLAGS], IS_16
-  .zero_high_bits: ; just leave IS_16 0 (or 1 if the "word" keyword was used)
+  .8bit_one_imm: ; just leave IS_16 0 (or 1 if the "word" keyword was used)
   jmp .maybe_second_arg ; need to error if there's another arg and skip the tail
 
 .no_arg:
@@ -577,6 +596,7 @@ parse_arguments:
 
   test byte [bp+.OUT_FLAGS], IS_IMM
   jnz .is_one_imm
+  ; .is_one_reg:
 
   ; Infer IS_16 if it's a mem instruction that only supports REG_16.
   ; So we don't need the "word" specfier in this case. Nasm does this too.
@@ -589,7 +609,6 @@ parse_arguments:
   or byte [bp+.OUT_FLAGS], IS_16
   .no_infer_mem16:
 
-  ; .is_one_reg:
   test byte [bp+.OUT_FLAGS], IS_16
   jnz .one_reg16
   ; .one_reg8
@@ -628,10 +647,15 @@ parse_arguments:
 
   .short_reg_dx_only:
   ; TODO requires the byte or word prefix
-  mov bx, not_implemented_error_str
-  mov cx, not_implemented_error_len
-  add sp, .STACK_SIZE
-  ret
+
+  ; in/out allow only an argument of dx
+  cmp byte [bp+.MODRM], MOD_REG|0x02 ; 2 is the index for dx
+  jne .invalid_argument_error
+
+  or byte [bp+.OUT_FLAGS], USE_SHORT_REG
+  mov byte [bp+.MODRM], 0 ; clear this so it can be added to the short_reg_opcodes
+
+  jmp .finish_one_arg
 
   .finish_one_arg:
   ; Clear the rest of the line and move on
@@ -646,72 +670,165 @@ parse_arguments:
   call skip_to_end_of_line
   jmp .done
 
-.second_arg: ; TODO
-  mov bx, not_implemented_error_str
-  mov cx, not_implemented_error_len
-  add sp, .STACK_SIZE
-  ret
+.second_arg:
+  inc si ; skip the comma
 
-  ;inc si ; skip the comma
+  call skip_spaces
+  cmp byte [ds:si], 0
+  je .syntax_error
+  cmp byte [ds:si], `\n`
+  je .syntax_error
 
-  ;call skip_spaces
-  ;cmp byte [ds:si], 0
-  ;je .syntax_error
-  ;cmp byte [ds:si], `\n`
-  ;je .syntax_error
+  ; Check for memory addressing mode
+  cmp byte [ds:si], '['
+  je .second_mem
 
-  ;; Check for memory addressing mode
-  ;cmp byte [ds:si], '['
-  ;jne .not_memory
-  ;; TODO: check if we've already seen a memory arg, then error
-  ;call parse_mem_arg
-  ;; TODO: check for segment prefix
-  ;; TODO: copy modRM into the result
-  ;; TODO: set the return flags
-  ;.not_memory:
+  ; TODO: error checking if we have reg, reg and the sizes don't match
+  ; Check for an 8 bit register name
+  mov bx, reg_8_addressing
+  call search_registers
+  cmp cx, -1
+  jne .second_reg ; Leave IS_16 0
+  ; Check for a 16 bit register name
+  mov bx, reg_16_addressing
+  call search_registers
+  cmp cx, -1
+  je .not_second_reg
+  ; Shift can only use cl even if it is a word shift
+  test dx, SHIFT
+  jnz .invalid_argument_error
 
-  ;; Check for an 8 bit register name
-  ;mov bx, reg_8_addressing
-  ;call search_registers
-  ;cmp cx, -1
-  ;jne .reg_8
-  ;; Check for a 16 bit register name
-  ;mov bx, reg_16_addressing
-  ;call search_registers
-  ;cmp cx, -1
-  ;jne .reg_16
+  or byte [bp+.OUT_FLAGS], IS_16 ; set the 16 bit flag
+  jmp .second_reg
+  .not_second_reg:
 
-  ;; TODO: if the mov segment flag is set, check for segment registers
+  ; TODO: if the mov segment flag is set, check for segment registers
 
-  ;call parse_expression
-  ;; TODO: if not error write the immediate to the output and set the flags
-  ;jmp .done
+  call parse_expression
+  cmp bx, 0
+  je .second_imm
+  ; TODO: check for unresolved expression when we have a symbol table
+  jmp .error_ret
 
-  ;jmp .syntax_error
+.second_mem:
+  ; We can only have a second mem arg when we have a swapped order instruction
+  test dx, SWAP_TWO_REG
+  jz .invalid_argument_error
+  ; The first argument must be a register, not memory
+  mov byte al, [bp+.MODRM]
+  and al, 0xC0 ; clear everything but the mode field (first 2 bits)
+  cmp al, MOD_REG
+  jne .invalid_argument_error
 
-  .done:
+  ; For les, lds, les we only allow the first arg to be 16 bit
+  test dx, LOAD_ADDR_16_ONLY
+  jz .not_load_addr
+  test byte [bp+.OUT_FLAGS], IS_16
+  jz .invalid_argument_error
+  .not_load_addr:
+
+  ; Save the reg argument bits for later (just reuse this space)
+  and byte [bp+.MODRM], 0x07 ; clear everything but the r/m field
+  shl byte [bp+.MODRM], 3 ; move the r/m field into the middle r field
+
+  call parse_mem_arg
+  test cx, cx ; check for errors
+  jnz .invalid_memory_deref
+
+  ; Save the results from parse_mem_arg to the output
+  mov byte [bp+.SEGMENT_PREFIX], al
+  or byte [bp+.MODRM], ah ; combine the parse_mem_arg modrm with the existing reg argument
+  mov word [bp+.DISPLACEMENT], bx
+  ; Set the out_flags and finish
+  or byte [bp+.OUT_FLAGS], USE_SWAP_OPCODE
+  jmp .done
+
+.second_reg:
+  add si, 2 ; skip the register name
+
+  test dx, SHIFT
+  jz .not_shift_cl
+  ; Shift can only use cl as the second reg arg
+  cmp cl, 1 ; the index for cl (defined by x86). Note: We already checked that this isn't a 16 bit reg above
+  jne .invalid_argument_error
+  or byte [bp+.OUT_FLAGS], USE_SHORT_SHIFT
+
+  ; TODO: requires "byte" or "word" if the first arg was mem
+  .not_shift_cl:
+
+  test dx, TWO_REG|SHIFT
+  jz .invalid_argument_error
+
+  shl cl, 3 ; move the register value to the middle reg field
+  or byte [bp+.MODRM], cl ; add in the second register argument (mode & r/m is already set)
+
+  jmp .done
+
+.second_imm:
+  test dx, REG_IMM|SHIFT|SHORT_REG_AL_ONLY
+  jz .invalid_argument_error
+
+  ; Set the out flags
+  or byte [bp+.OUT_FLAGS], USE_EXTRA_OP|IS_IMM
+
+  ; Use the short shift opcode if we're just doing shift r/m, 1
+  test dx, SHIFT
+  jz .not_shift_1
+  cmp ax, 1
+  jne .not_shift_1
+  or byte [bp+.OUT_FLAGS], USE_SHORT_SHIFT
+  .not_shift_1:
+
+  ; Use the short reg opcode if we can
+  test dx, SHORT_REG_AL_ONLY
+  jz .not_short_reg_al
+  ; Allowed when we have a MOD_REG arg and the register is al or ax
+  mov bl, [bp+.MODRM]
+  and bl, 0xC0 ; clear everything but the mode bits
+  cmp bl, MOD_REG
+  jne .not_short_reg_al
+  test byte [bp+.MODRM], 0x7
+  jnz .not_short_reg_al ; zero in the r/m field means al or ax
+  or byte [bp+.OUT_FLAGS], USE_SHORT_REG
+  mov byte [bp+.MODRM], 0 ; clear the MODRM so we can add it to the short_reg_opcode
+  .not_short_reg_al:
+
+  mov word [bp+.IMMEDIATE], ax
+
+  test ax, 0xFF00 ; check if the upper bits are 0
+  jz .8bit_second_imm
+  ; Shift only supports 8bit immedatie
+  test dx, SHIFT
+  jnz .invalid_argument_error
+  ; TODO: error if we asked for "byte"
+  or byte [bp+.OUT_FLAGS], IS_16
+  .8bit_second_imm: ; just leave IS_16 0 (or 1 if the "word" keyword was used)
+
+  jmp .done
+
+.done:
   ; bp is already the output we want
   pop cx ; restore the line count
   xor bx, bx ; no error
   add sp, .STACK_SIZE-2
   ret
 
-  .invalid_argument_error:
+.invalid_argument_error:
   mov bx, invalid_argument_error_str
   mov cx, invalid_argument_error_len
   add sp, .STACK_SIZE
   ret
 
-  .invalid_memory_deref:
+.invalid_memory_deref:
   mov bx, invalid_memory_deref_error_str
   mov cx, invalid_memory_deref_error_len
   add sp, .STACK_SIZE
   ret
 
-  .syntax_error:
+.syntax_error:
   mov bx, syntax_error_str
   mov cx, syntax_error_len
-  .error_ret:
+.error_ret:
   add sp, .STACK_SIZE
   ret
 
@@ -1165,7 +1282,7 @@ SHORT_REG:         equ 0x0100 ; A 16 bit reg arg can be added into the short_reg
 SHORT_REG_AL_ONLY: equ 0x0200 ; only al/ax, imm
 SHORT_REG_DX_ONLY: equ 0x0400 ; only allows a single arg of dx
 DEFAULT_10:        equ 0x0800 ; aad and aam have a special default arg of 10 and 8bit imm otherwise
-ARG2_MEMORY_ONLY:  equ 0x1000 ; reg, mem only (second arg cannot be reg). Implies TWO_REG.
+LOAD_ADDR_16_ONLY: equ 0x1000 ; lea, lds, les all are reg16, mem only
 SHIFT:             equ 0x2000 ; reg/mem, imm8 or reg/mem, 1 or reg/mem, cl
 FAR_JUMP:          equ 0x4000
 MOV_SEGMENT:       equ 0x8000
@@ -1214,9 +1331,9 @@ dw IMM_8, ; int
 dw NO_ARG, ; into
 dw NO_ARG, ; iret
 dw NO_ARG, ; lahf
-dw TWO_REG|ARG2_MEMORY_ONLY, ; lds
-dw TWO_REG|ARG2_MEMORY_ONLY, ; lea
-dw TWO_REG|ARG2_MEMORY_ONLY, ; les
+dw SWAP_TWO_REG|LOAD_ADDR_16_ONLY, ; lds
+dw SWAP_TWO_REG|LOAD_ADDR_16_ONLY, ; lea
+dw SWAP_TWO_REG|LOAD_ADDR_16_ONLY, ; les
 dw NO_ARG, ; lock
 dw IMM_8, ; loop
 dw IMM_8, ; loope
@@ -1288,9 +1405,9 @@ db 0x00, ; int
 db 0xCE, ; into
 db 0xCF, ; iret
 db 0x9F, ; lahf
-db 0xC5, ; lds
-db 0x8D, ; lea
-db 0xC4, ; les
+db 0xC5-3, ; lds Note: -3 because these are reg16, mem only, which does opcode+3
+db 0x8D-3, ; lea
+db 0xC4-3, ; les
 db 0xF0, ; lock
 db 0x00, ; loop
 db 0x00, ; loope
