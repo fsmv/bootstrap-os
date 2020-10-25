@@ -737,19 +737,31 @@ parse_mem_arg:
   ; Search the list of valid memory derefrence operands
   mov cx, -1
   mov bx, mem_addressing-1
+  mov bp, si ; Save the beginning so we can reset
   .check_next_mem_string:
-  mov bp, si ; Reset to the beginning of the mem arg for the next element
+  mov si, bp ; Reset to the beginning of the mem arg for the next element
   inc bx ; skip to the next mem operand to check
   inc cx ; count the index for when we get a match
   cmp byte [cs:bx], 0
   je .error ; Hit the end of the list
   .check_mem_string:
-  mov byte dl, [ds:bp]
+
+  ; Skip spaces around the + char
+  cmp byte [ds:si-1], '+'
+  je .skip_whitespace ; skip spaces after the +
+  cmp byte [cs:bx], '+'
+  jne .whitespace_not_allowed ; skip spaces before the +
+  ; fallthrough
+  .skip_whitespace:
+  call skip_spaces
+  .whitespace_not_allowed:
+
+  mov byte dl, [ds:si]
   cmp dl, 0
   jz .next_mem_string ; End of the search string means no match
   cmp byte dl, [cs:bx]
   jne .next_mem_string
-  inc bp
+  inc si
   inc bx
   cmp byte [cs:bx], 0
   jne .check_mem_string ; keep checking for a match
@@ -762,7 +774,6 @@ parse_mem_arg:
   jmp .next_mem_string
 
   .found_mem_match:
-  mov si, bp ; save the read pointer as the end of the mem arg
   or ah, cl ; Write the r/m field (last 3 bits) with the arg we found
   ; The mode field (upper 2 bits) is 0 for MOD_MEM so don't bother setting it
 
