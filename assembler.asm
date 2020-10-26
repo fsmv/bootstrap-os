@@ -1344,7 +1344,7 @@ WRITE_SEGMENT_OPCODE: equ 0x8E
 
 JCC_FLAGS: equ ONE_IMM
 JMP_FLAGS: equ ONE_IMM|REG_16|FAR_JUMP
-JMP_EXTRA_INDEX: equ byte JMP_EXTRA_ADDR-extra_opcodes ; Note: the opcodes are one byte each
+JMP_EXTRA_INDEX: equ JMP_EXTRA_ADDR-extra_opcodes ; Note: the opcodes are one byte each
 
 supported_args:
 dw NO_ARG, ; aaa
