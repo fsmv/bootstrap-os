@@ -1,6 +1,5 @@
 ; Provided under the MIT License: http://mit-license.org/
 ; Copyright (c) 2020 Andrew Kallmeyer <ask@ask.systems>
-%define SECTOR_SIZE 0x200 ; 512 in decimal
 
 ; Segment register value (so the actual start is at the address 0x10*this)
 ; This is the first sector after the editor's code
@@ -45,133 +44,29 @@
 ; buffer the gap can be reset for free.
 %define GAP_SIZE (8*ROW_LENGTH)
 
-%include "util/bootsect-header.asm"
+%include "bootloader/bootsect.asm"
 
-mov [BOOT_DISK], dl ; Save the boot disk number
+; This is the start for calculating NUM_EXTRTA_SECTORS
+; There must be nothing other than the bootsector above this label
+extra_sectors_start:
 
-; Set video mode, 16 color 80x25 chars
+; Optionally change the keyboard layout.
 ;
-; The IBM BIOS manual describes a long procedure for determining which video
-; modes are supported and all the possible options for supporting both mono and
-; color. Sometimes mono isn't supported if the PC supports color modes. So, I'm
-; just going to assume all hardware this is used on supports color modes.
-mov ax, 0x0003
-int 0x10
+; To use a layout: look in the file you want for the %ifdef label and -D define
+; it on the commandline. Ex: ./boot bootstrap-asm.asm -DDVORAK
+;
+; It's easy to make a new layout!
+;
+; Simply pull up an ascii table (my favorite is `man ascii`) then type it out
+; starting from ' ' to '~' using your qwerty keyboard labels using the desired
+; layout in your OS (note: both \ and ` must be escaped for the assembler)
+%include "keyboard-layouts/dvorak.asm"
+; TODO: is the default layout qwerty or hardware specific? My map is qwerty->dvorak only
 
-; Make the 8th bit of the colors bg-intensity instead of blink
-mov ax, 0x1003
-mov bl, 0
-int 0x10
+no_more_room_msg: db `No more room in the code buffer`
+no_more_room_msg_len: equ $-no_more_room_msg
 
-; Make the 4th bit of the colors fg-intensity instead of font selection
-; Use block 0 for the font
-; Apparently this is the default in VGA so maybe we don't need it
-mov ax, 0x1103
-mov bl, 0
-int 0x10
-
-; Color byte is now: bg-intensity,bg-r,bg-g,bg-b ; fg-intensity,fg-r,fg-g,fg-b
-
-; Set cursor type to an underline
-mov ax, 0x0100
-mov cx, 0x0607
-int 0x10
-
-; Set the border color (by clearing the whole screen)
-mov ax, 0x0600
-xor cx, cx   ; row = 0,  col = 0
-mov dx, 0x184F ; row = 24, col = 79
-mov bh, BORDER_COLOR
-int 0x10
-
-; Set the background color (by clearing just the middle)
-;mov ax, 0x0600
-mov cx, MAIN_TOP_LEFT
-mov dx, MAIN_BOTTOM_RIGHT
-mov bh, MAIN_COLOR
-int 0x10
-
-; Set the keyboard repeat speed
-mov ax, 0x0305
-;mov bx, 0x0107 ; 500 ms delay before repeat ; 16 characters per second
-mov bx, 0x0100 ; 500 ms delay before repeat ; 30 characters per second
-int 0x16
-
-; Load the code from the extra sectors
-mov ah, 0x02
-mov al, NUM_EXTRA_SECTORS
-mov bx, SECTOR_SIZE ; es:bx is address to write to. es = cs, so write directly after the boot sector
-mov cx, 0x0002 ; Cylinder 0; Sector 2 (1 is the boot sector)
-mov dl, [BOOT_DISK]
-xor dh, dh ; Head 0
-int 0x13
-
-; Check for errors
-cmp ax, NUM_EXTRA_SECTORS
-je start_
-
-push ax ; push the error code
-
-; Print the error message
-mov ax, 0x1301 ; Write String, move cursor mode in al
-mov bp, error_msg ; String pointer in es:bp (es is at code start from bootsect-header.asm)
-mov cx, error_msg_len ; String length
-mov dx, MAIN_TOP_LEFT
-mov bx, MAIN_COLOR ; bh = 0 (page number); bl = color
-int 0x10
-
-pop cx ; pop the error code
-call print_hex ; print the error code
-
-jmp $ ; stop forever
-
-; Prints the ascii hex character which represents the integer value of al
-; Only accepts 0x0 <= al <= 0xF, anything else is garbage output
-; e.g. al = 12 prints "C"
-; clobbers ax, and bx
-print_hex_char:
-  mov ah, 0x0E
-  xor bx, bx
-  ; fallthrough
-; Also assumes ah = 0x0E and bx = 0
-_print_hex_char:
-  cmp al, 9
-  ja .over_9
-
-  add al, '0'
-  int 0x10
-  ret
-
-.over_9:
-  sub al, 10
-  add al, 'A'
-  int 0x10
-  ret
-
-; cx = two bytes to write at current cursor
-; clobbers ax, and bx
-print_hex:
-  mov ah, 0x0E ; Scrolling teletype BIOS routine (used with int 0x10)
-  xor bx, bx ; Clear bx. bh = page, bl = color
-
-  ; Nibble 0 (most significant)
-  mov al, ch
-  shr al, 4
-  call _print_hex_char
-  ; Nibble 1
-  mov al, ch
-  and al, 0x0F
-  call _print_hex_char
-  ; Nibble 2
-  mov al, cl
-  shr al, 4
-  call _print_hex_char
-  ; Nibble 3
-  mov al, cl
-  and al, 0x0F
-  call _print_hex_char
-
-  ret
+num_debug_prints: db 0x00
 
 ; Prints a hex word in the top margin for debugging purposes
 ; Supports printing as many as will fit in before it runs into the text area
@@ -228,37 +123,23 @@ debug_print_hex:
 
   ret
 
-; === Bootsector data area ===
-
-error_msg: db `Error reading additional sectors from disk: `
-error_msg_len: equ $-error_msg
-
-num_debug_prints: db 0x00
-
-BOOT_DISK: db 0x00 ; value is filled first thing
-
-%include "util/bootsect-footer.asm"
-; This is the start for calculating NUM_EXTRTA_SECTORS
-; There must be nothing other than the bootsector above this label
-extra_sectors_start:
-
-; Optionally change the keyboard layout.
-;
-; To use a layout: look in the file you want for the %ifdef label and -D define
-; it on the commandline. Ex: ./boot bootstrap-asm.asm -DDVORAK
-;
-; It's easy to make a new layout!
-;
-; Simply pull up an ascii table (my favorite is `man ascii`) then type it out
-; starting from ' ' to '~' using your qwerty keyboard labels using the desired
-; layout in your OS (note: both \ and ` must be escaped for the assembler)
-%include "keyboard-layouts/dvorak.asm"
-; TODO: is the default layout qwerty or hardware specific? My map is qwerty->dvorak only
-
-no_more_room_msg: db `No more room in the code buffer`
-no_more_room_msg_len: equ $-no_more_room_msg
 
 start_:
+
+; Set the border color (by clearing the whole screen)
+mov ax, 0x0600
+xor cx, cx   ; row = 0,  col = 0
+mov dx, 0x184F ; row = 24, col = 79
+mov bh, BORDER_COLOR
+int 0x10
+
+; Set the background color (by clearing just the middle)
+;mov ax, 0x0600
+mov cx, MAIN_TOP_LEFT
+mov dx, MAIN_BOTTOM_RIGHT
+mov bh, MAIN_COLOR
+int 0x10
+
 
 ; Set cursor position to the start
 mov ax, 0x0200
@@ -370,6 +251,7 @@ run_code:
 
   .no_error:
 
+%if 0
   ; Placeholder: just print the code we outputted instead of running it
   mov si, di
   xor di, di
@@ -412,6 +294,7 @@ run_code:
 
   .end:
   jmp $
+%endif
 
   ; far jump to the assembled code
   mov ax, es
@@ -1357,4 +1240,4 @@ clear_error:
 ; e.g. for exactly 512 bytes we want 1 extra sector not 2
 ;
 ; The +1 is because int division does floor() and we want ceil()
-NUM_EXTRA_SECTORS: equ ($-extra_sectors_start-1)/SECTOR_SIZE + 1
+NUM_EXTRA_SECTORS: equ NUM_SECTORS(extra_sectors_start)
