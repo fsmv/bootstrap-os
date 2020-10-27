@@ -9,5 +9,5 @@ file=$1
 name="${file%%.*}"
 binfile="bin/$name.bin"
 
-mkdir -p ./bin
+mkdir -p `dirname $binfile`
 nasm $file -f bin -o $binfile "${@:2}" && qemu-system-x86_64 -drive file=$binfile,format=raw,if=ide
