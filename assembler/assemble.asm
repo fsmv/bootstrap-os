@@ -25,32 +25,22 @@ assemble:
 assemble_loop:
   cmp byte [ds:si], 0
   je done_assembling
+  push cx ; save the line count so we can use cx
 
   ; Skip beginning of line whitespace
   call skip_spaces
-  cmp byte [ds:si], 0
-  je done_assembling
-
   ; Skip blank lines
+  cmp byte [ds:si], 0
+  je .next_line_or_done
   cmp byte [ds:si], `\n`
-  jne .not_blank_line
-  inc si ; skip the \n
-  inc cx ; count the line
-  jmp assemble_loop
-  .not_blank_line:
+  je .next_line_or_done
 
   ; Skip comment lines
   cmp byte [ds:si], ';'
   jne .not_comment
   call skip_to_end_of_line
-  cmp byte [ds:si], 0
-  je done_assembling
-  inc si ; skip the \n
-  inc cx ; count the new line
-  jmp assemble_loop
+  jmp .next_line_or_done
   .not_comment:
-
-  push cx ; save the line count so we can use cx
 
   ; TODO: parse labels and fill in values for line numbers as we hit them
 
@@ -252,6 +242,11 @@ assemble_loop:
 
 .next_line_or_done:
   pop cx ; restore the line count
+
+%ifdef TESTER_CALLBACK
+  call test_assembled_instruction
+%endif
+
   inc cx ; count the line we just parsed
 
   cmp byte [ds:si], 0
