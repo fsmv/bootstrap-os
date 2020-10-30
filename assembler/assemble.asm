@@ -13,6 +13,10 @@ assemble:
 
   ; TODO: db/dw and equ directives
   ; TODO: expression parser
+  
+  ; TODO: support "byte" and "word" prefixes
+  ; TODO: support DEFAULT_10
+  ; TODO: support FAR_JUMP
 
   ; TODO: first pass over each line: build the symbol table
   ;  - save the line number the label is on (skipping comment only lines)
@@ -21,6 +25,7 @@ assemble:
   ;  - just write the data right before the assembled code
 
   ; Second pass to parse the instructions
+  ; TODO: off by one with the line number when returning errors (but not in the tester)
   mov cx, 1 ; keep a line number count for error reporting
 assemble_loop:
   cmp byte [ds:si], 0
