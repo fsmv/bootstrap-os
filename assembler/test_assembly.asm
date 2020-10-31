@@ -219,13 +219,13 @@ les ax, [si]
 
 ; SHIFT (reg/mem, imm8 or reg/mem, 1 or reg/mem, cl)
 rcl cl, 0x02
-;rcr cl, 0x1; TODO: nasm wants operand size [bx], 1
-;rol ax, cl
+;rcr [bx], 0x1 ; TODO: nasm wants operand size
+rol ax, cl
 ror bx, cl
 sal dh, 0x8
 sar dl, 0x15
-;shl dl, 0x1
-;shr ah, 0x2 ; TODO: nasm wants operand size [es:di], 0x12
+shl dl, 0x1
+shr ah, 0x2 ; TODO: nasm wants operand size [es:di], 0x12
 
 ; NO_ARG|IMM_16
 ret
@@ -241,5 +241,5 @@ push cx
 push 0x1234
 
 ; TWO_REG
-xchg cx, bx
+;xchg bx, cx ; For some reason nasm always encodes these args swapped but I checked with a disassembler and we do it right
 xchg [di], ah

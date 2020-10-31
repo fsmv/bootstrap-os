@@ -155,13 +155,15 @@ assemble_loop:
   jnz .error_ret
 
   ; Note: short_reg can happen for reg, imm instructions
+  test byte [bp+parse_arguments.OUT_FLAGS], USE_SHORT_SHIFT
+  jnz .short_shift_opcode
   test byte [bp+parse_arguments.OUT_FLAGS], USE_SHORT_REG
   jnz .short_reg_opcode
   test byte [bp+parse_arguments.OUT_FLAGS], IS_IMM
   jnz .imm_opcode
   ; fallthrough
 
-  .reg_opcode:
+.reg_opcode:
   call maybe_write_segment_prefix
   ; Get the opcode value
   mov bx, reg_opcodes
@@ -190,7 +192,7 @@ assemble_loop:
   call write_mem_reg
   jmp .next_line_or_done
 
-  .short_reg_opcode:
+.short_reg_opcode:
   mov bx, short_reg_opcodes
   add bx, cx
   mov byte al, [cs:bx] ; al = short_reg_opcodes[instruction_index]
@@ -214,7 +216,28 @@ assemble_loop:
   call write_imm
   jmp .next_line_or_done
 
-  .imm_opcode:
+.short_shift_opcode:
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_IMM
+  jnz .shift_one
+  mov al, SHIFT_CL_OPCODE
+  jmp .shift_have_opcode
+  .shift_one:
+  mov al, SHIFT_ONE_OPCODE
+  ; fallthrough
+  .shift_have_opcode:
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_16
+  jz .shift_not_16
+  inc al
+  .shift_not_16:
+
+  ; Write the opcode to the output
+  mov byte [es:di], al
+  inc di
+
+  call write_mem_reg ; also includes the extra opcode
+  jmp .next_line_or_done
+
+.imm_opcode:
   ; Get the opcode value
   mov bx, immediate_opcodes
   add bx, cx
@@ -745,12 +768,12 @@ parse_arguments:
   ; Shift can only use cl as the second reg arg
   cmp cl, 1 ; the index for cl (defined by x86). Note: We already checked that this isn't a 16 bit reg above
   jne .invalid_argument_error
-  or byte [bp+.OUT_FLAGS], USE_SHORT_SHIFT
-
+  or byte [bp+.OUT_FLAGS], USE_SHORT_SHIFT|USE_EXTRA_OP
   ; TODO: requires "byte" or "word" if the first arg was mem
+  jmp .done ; don't write the cl arg into ModRM (we need the extra op there)
   .not_shift_cl:
 
-  test dx, TWO_REG|SHIFT
+  test dx, TWO_REG
   jz .invalid_argument_error
 
   shl cl, 3 ; move the register value to the middle reg field
@@ -770,7 +793,8 @@ parse_arguments:
   jz .not_shift_1
   cmp ax, 1
   jne .not_shift_1
-  or byte [bp+.OUT_FLAGS], USE_SHORT_SHIFT
+  or byte [bp+.OUT_FLAGS], USE_SHORT_SHIFT|USE_EXTRA_OP
+  ; TODO: requires "byte" or "word" if the first arg was mem
   .not_shift_1:
 
   ; Use the short reg opcode if we can
