@@ -7,6 +7,8 @@ MOD_MEM_DISP8:  equ 0x40
 MOD_MEM_DISP16: equ 0x80
 MOD_REG:        equ 0xC0
 
+MODRM_ABSOLUTE_ADDRESS: equ 0x06 ; The middle 3 bits reg field is 0 here
+
 ; In order. Count to get the 3 bit R/M field value
 mem_addressing:
 db 'bx+si',0

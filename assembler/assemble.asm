@@ -13,10 +13,11 @@ assemble:
 
   ; TODO: db/dw and equ directives
   ; TODO: expression parser
-  
+
   ; TODO: support "byte" and "word" prefixes
   ; TODO: support DEFAULT_10
   ; TODO: support FAR_JUMP
+  ; TODO: support mov segment registers
 
   ; TODO: first pass over each line: build the symbol table
   ;  - save the line number the label is on (skipping comment only lines)
@@ -454,6 +455,9 @@ write_mem_reg:
 
   ; Write the displacement if needed
   mov word dx, [bp+parse_arguments.DISPLACEMENT]
+  and al, 0xC7 ; Clear the middle 3 bits reg field
+  cmp al, MODRM_ABSOLUTE_ADDRESS
+  je .write_disp_16
   and al, 0xC0 ; Clear everything but the mode field
   cmp al, MOD_MEM_DISP8
   je .write_disp_8
@@ -893,7 +897,7 @@ parse_mem_arg:
   inc bx ; skip to the next mem operand to check
   inc cx ; count the index for when we get a match
   cmp byte [cs:bx], 0
-  je .error ; Hit the end of the list
+  je .try_expression ; Hit the end of the list
   .check_mem_string:
 
   ; Skip spaces around the + char
@@ -923,11 +927,23 @@ parse_mem_arg:
   inc bx
   jmp .next_mem_string
 
+  .try_expression:
+  mov dx, ax ; save the segment prefix and modrm output
+  call parse_expression
+  cmp bx, 0 ; TODO: check for unresolved expression
+  jne .error
+
+  mov bx, ax ; save the parse_expression result in the displacement output
+  mov ax, dx ; restore the segment prefix and modrm output
+  mov ah, MODRM_ABSOLUTE_ADDRESS ; write the modrm value for this
+
+  call skip_spaces ; finish doesn't do this because we don't want to do it twice in .found_mem_match
+  jmp .finish
+
   .found_mem_match:
   or ah, cl ; Write the r/m field (last 3 bits) with the arg we found
   ; The mode field (upper 2 bits) is 0 for MOD_MEM so don't bother setting it
 
-  ; TODO [disp16] i.e. absolute address
   ; TODO: allow skipping spaces before this + and - should be allowed here
 
   ; Check for displacement
@@ -961,7 +977,9 @@ parse_mem_arg:
   ; if we're using [bp] and the first 2 bits are zero then we're in mem mode
   or ah, MOD_MEM_DISP8 ; we need to write a 0 byte for displacement
   .no_zero_displacement:
+  ; fallthrough
 
+.finish:
   cmp byte [ds:si], ']'
   jne .error ; End square brace is required
   inc si ; skip the ]
@@ -971,7 +989,7 @@ parse_mem_arg:
   xor cx, cx ; success
   ret
 
-  .error:
+.error:
   pop dx ; restore the instruction flags
   pop bp ; restore the parse_arguments pointer
   mov cx, 1

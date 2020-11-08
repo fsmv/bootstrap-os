@@ -30,13 +30,15 @@ mov bx, [bp+si]
 mov bx, [bp+di]
 mov bx, [bx+si]
 mov bx, [bx+di]
+mov bx, [0x10]
 ; All segment prefixes
 mov bx, [es:bx]
 mov bx, [ds:bp+si]
-mov bx, [ss:bx]
+mov bx, [ss:0x123]
 mov bx, [ds:bp+si]
 
-; TODO test all argument parsing types
+; TODO: add jcc opcodes once we support the symbol table and absolute->relative
+; conversion (nasm even converts immediates you write)
 
 ; Now we can just test one of each arg type for all of the opcodes (since we
 ; know that the different register numbers work from above)
@@ -65,7 +67,7 @@ outsw
 into
 iret
 lahf
-;lock  ; TODO we don't really support this as a prefix
+;lock  ; TODO we don't really support this as a prefix correctly
 nop
 popf
 pushf
@@ -93,7 +95,7 @@ add ch, [bp]
 add [bx], ch
 add al, bh
 
-;and bx, 0x9 ; TODO: nasm uses the special sign extend opcode for this if you don't say "word"
+;and bx, 0x9 ; TODO: nasm uses the special sign extend opcode for this if you don't say "byte"
 and cx, cx
 and cx, [bp]
 and ax, bp
