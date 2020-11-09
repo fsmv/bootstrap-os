@@ -14,16 +14,17 @@ assemble:
   ; TODO: db/dw and equ directives
   ; TODO: expression parser
 
-  ; TODO: support "byte" and "word" prefixes
   ; TODO: support DEFAULT_10
   ; TODO: support FAR_JUMP
   ; TODO: support mov segment registers
+  ; TODO: support in/out with the al/ax first parameter
 
   ; TODO: first pass over each line: build the symbol table
   ;  - save the line number the label is on (skipping comment only lines)
   ;  - save the current non-dot label somewhere so we can handle local labels
   ;  - have a resolved/unresolved flag we can flip as we go and fill in values
   ;  - just write the data right before the assembled code
+  ;  - need to handle contextually using relative addresses instead of absolute
 
   ; Second pass to parse the instructions
   ; TODO: off by one with the line number when returning errors (but not in the tester)
@@ -239,6 +240,7 @@ assemble_loop:
   jmp .next_line_or_done
 
 .imm_opcode:
+  call maybe_write_segment_prefix
   ; Get the opcode value
   mov bx, immediate_opcodes
   add bx, cx
@@ -416,13 +418,15 @@ search_registers:
   ret
 
 write_imm:
-  mov word dx, [bp+parse_arguments.IMMEDIATE]
+  mov ax, [bp+parse_arguments.IMMEDIATE]
   ; x86 is little endian so write the low byte first
-  mov byte [es:di], dl
+  mov [es:di], al
   inc di
+  test dx, SHIFT
+  jnz .only_one_byte ; shift is always one imm byte even if IS_16 is 1
   test byte [bp+parse_arguments.OUT_FLAGS], IS_16
   jz .only_one_byte
-  mov byte [es:di], dh
+  mov [es:di], ah
   inc di
   .only_one_byte:
   ret
@@ -503,25 +507,58 @@ IS_NO_ARG: equ 0x80
 ;  - cx : (opcode index) unchanged if sucessful, error string length if not
 parse_arguments:
   .STACK_SIZE: equ 1+1+1+2+2+2 +1 ; out_flags, segment-prefix, modRM, immediate, displacement, cx +1 for word alignment
-  .OUT_FLAGS: equ 0
-  .SEGMENT_PREFIX: equ 1
-  .MODRM: equ 2
-  .IMMEDIATE: equ 3
-  .DISPLACEMENT: equ 5
+  .SIZE_DETERMINED: equ 0 ; just a boolean for if IS_16 cannot change anymore
+  .OUT_FLAGS: equ 1
+  .SEGMENT_PREFIX: equ 2
+  .MODRM: equ 3
+  .IMMEDIATE: equ 4
+  .DISPLACEMENT: equ 6
   ; Zero the memory and move the stack pointer
   push 0 ; displacement
   push 0 ; immediate
   push 0 ; modrm, segment_prefix
-  push 0 ; out_flags, 0x00
+  push 0 ; out_flags, size_determined
   mov bp, sp ; save the base to reference the variables from
   push cx ; save the instruction index
   ; Note: no need to dec bp because it's all 0 and we want it word aligned anyway
 
-  ; TODO: check for "word" or "byte"
-
-.first_arg:
   call skip_spaces
 
+  ; Check if we have "byte" or "word" specified
+  ; We can check 2 at a time here because we know we have a line ending char
+  cmp word [ds:si], "by"
+  je .maybe_byte
+  cmp word [ds:si], "wo"
+  je .maybe_word
+  jmp .first_arg
+
+  .maybe_byte:
+  ; In these helpers we have to check one at a time in case we hit the line end
+  cmp byte [ds:si+2], 't'
+  jne .first_arg
+  cmp byte [ds:si+3], 'e'
+  jne .first_arg
+
+  add si, 4 ; skip over the parsed text
+  mov byte [bp+.SIZE_DETERMINED], 1
+
+  call skip_spaces
+  jmp .first_arg
+
+  .maybe_word:
+  cmp byte [ds:si+2], 'r'
+  jne .first_arg
+  cmp byte [ds:si+3], 'd'
+  jne .first_arg
+
+  add si, 4 ; skip over the parsed text
+  mov byte [bp+.SIZE_DETERMINED], 1
+  or byte [bp+.OUT_FLAGS], IS_16
+
+  call skip_spaces
+  ; fallthrough
+
+.first_arg:
   cmp byte [ds:si], 0
   je .no_arg
   cmp byte [ds:si], `\n`
@@ -537,19 +574,12 @@ parse_arguments:
   cmp byte [ds:si], '['
   je .first_mem
 
-  ; Check for an 8 bit register name
-  mov bx, reg_8_addressing
-  call search_registers
+  xor ax, ax
+  call parse_reg_arg
+  cmp bx, 0
+  jne .error_ret
   cmp cx, -1
-  jne .first_reg ; Leave IS_16 0
-  ; Check for a 16 bit register name
-  mov bx, reg_16_addressing
-  call search_registers
-  cmp cx, -1
-  je .not_first_reg
-  or byte [bp+.OUT_FLAGS], IS_16 ; set the 16 bit flag
-  jmp .first_reg
-  .not_first_reg:
+  jne .first_reg
 
 ; TODO: if the mov segment flag is set, check for segment registers
 
@@ -591,16 +621,48 @@ parse_arguments:
   test dx, ONE_IMM
   jz .invalid_argument_error
 
+  ; Infer the operand size if the instruction only supports 16 bit (nasm does this too)
+  test dx, IMM_8
+  jnz .not_16bit_only
+
+  ; If they wrote "byte" return an error
+  cmp byte [bp+.SIZE_DETERMINED], 0
+  je .imm16_only_size_okay
+  test byte [bp+.OUT_FLAGS], IS_16
+  jnz .imm16_only_size_okay
+  jmp .invalid_argument_error
+  .imm16_only_size_okay:
+
+  mov byte [bp+.SIZE_DETERMINED], 1
+  or byte [bp+.OUT_FLAGS], IS_16
+
+  .not_16bit_only:
+
   mov word [bp+.IMMEDIATE], ax ; write out the immediate value
   or byte [bp+.OUT_FLAGS], IS_IMM
   test ax, 0xFF00 ; check if the upper bits are 0
-  jz .8bit_one_imm
-  ; TODO: error if we asked for "byte"
+  jz .zero_high_bits
+
+  ; It's an error if we specified "byte" and gave a 16 bit immediate
+  cmp byte [bp+.SIZE_DETERMINED], 0
+  je .imm_size_okay
+  test byte [bp+.OUT_FLAGS], IS_16
+  jnz .imm_size_okay
+  mov bx, operand_size_mismatch_str
+  mov cx, operand_size_mismatch_len
+  jmp .error_ret
+  .imm_size_okay:
+
   or byte [bp+.OUT_FLAGS], IS_16
-  .8bit_one_imm: ; just leave IS_16 0 (or 1 if the "word" keyword was used)
+  ; fallthrough
+  .zero_high_bits:
   jmp .maybe_second_arg ; need to error if there's another arg and skip the tail
 
 .no_arg:
+  ; "byte" and "word" prefixes aren't allowed for NO_ARG
+  cmp byte [bp+.SIZE_DETERMINED], 0
+  jnz .syntax_error
+
   test dx, NO_ARG
   jz .invalid_argument_error
   mov byte [bp+.OUT_FLAGS], IS_NO_ARG
@@ -627,8 +689,25 @@ parse_arguments:
   je .no_infer_mem16
   test dx, REG_8
   jnz .no_infer_mem16
+
+  ; It's an error if we specified "byte" but this is a mem op that doesn't support 8 bit
+  cmp byte [bp+.SIZE_DETERMINED], 0
+  je .reg_size_okay
+  test byte [bp+.OUT_FLAGS], IS_16
+  jnz .reg_size_okay
+  mov bx, operand_size_mismatch_str
+  mov cx, operand_size_mismatch_len
+  jmp .error_ret
+  .reg_size_okay:
+
+  ; It's a mem op that only supports 16 bit
   or byte [bp+.OUT_FLAGS], IS_16
+  mov byte [bp+.SIZE_DETERMINED], 1
+
   .no_infer_mem16:
+
+  cmp byte [bp+.SIZE_DETERMINED], 0
+  je .operand_size_not_specified_error
 
   test byte [bp+.OUT_FLAGS], IS_16
   jnz .one_reg16
@@ -645,6 +724,7 @@ parse_arguments:
   jmp .check_short_reg
 
   .is_one_imm:
+  ; Note: already checked .SIZE_DETERMINED in .one_imm
   test byte [bp+.OUT_FLAGS], IS_16
   jnz .one_imm16
   ; .one_imm8
@@ -657,17 +737,24 @@ parse_arguments:
   jmp .finish_one_arg
 
   .check_short_reg:
+  ; The instruction must support short reg
   test dx, SHORT_REG
   jz .not_short_reg
+  ; Short reg cannot be a memory arg
+  mov al, [bp+.MODRM]
+  and al, 0xC0 ; Clear everything but the Mode field for checking
+  cmp al, MOD_REG
+  jne .not_short_reg
+
   or byte [bp+.OUT_FLAGS], USE_SHORT_REG ; Set the out flag for short reg
   and byte [bp+.MODRM], 0x07 ; Clear everything but the r/m field so we can add this byte to the short_reg_opcode
   jmp .finish_one_arg
+
   .not_short_reg:
   or byte [bp+.OUT_FLAGS], USE_EXTRA_OP ; One register arg instructions need the extra op
   jmp .finish_one_arg
 
   .short_reg_dx_only:
-  ; TODO requires the byte or word prefix
 
   ; in/out allow only an argument of dx
   cmp byte [bp+.MODRM], MOD_REG|0x02 ; 2 is the index for dx
@@ -704,24 +791,14 @@ parse_arguments:
   cmp byte [ds:si], '['
   je .second_mem
 
-  ; TODO: error checking if we have reg, reg and the sizes don't match
-  ; Check for an 8 bit register name
-  mov bx, reg_8_addressing
-  call search_registers
+  ; ax = 0 if this instruction isn't shift, non-zero otherwise
+  mov ax, dx
+  and ax, SHIFT
+  call parse_reg_arg
+  cmp bx, 0
+  jne .error_ret
   cmp cx, -1
-  jne .second_reg ; Leave IS_16 0
-  ; Check for a 16 bit register name
-  mov bx, reg_16_addressing
-  call search_registers
-  cmp cx, -1
-  je .not_second_reg
-  ; Shift can only use cl even if it is a word shift
-  test dx, SHIFT
-  jnz .invalid_argument_error
-
-  or byte [bp+.OUT_FLAGS], IS_16 ; set the 16 bit flag
-  jmp .second_reg
-  .not_second_reg:
+  jne .second_reg
 
   ; TODO: if the mov segment flag is set, check for segment registers
 
@@ -756,6 +833,9 @@ parse_arguments:
   test cx, cx ; check for errors
   jnz .invalid_memory_deref
 
+  cmp byte [bp+.SIZE_DETERMINED], 0
+  je .operand_size_not_specified_error
+
   ; Save the results from parse_mem_arg to the output
   mov byte [bp+.SEGMENT_PREFIX], al
   or byte [bp+.MODRM], ah ; combine the parse_mem_arg modrm with the existing reg argument
@@ -769,11 +849,7 @@ parse_arguments:
 
   test dx, SHIFT
   jz .not_shift_cl
-  ; Shift can only use cl as the second reg arg
-  cmp cl, 1 ; the index for cl (defined by x86). Note: We already checked that this isn't a 16 bit reg above
-  jne .invalid_argument_error
   or byte [bp+.OUT_FLAGS], USE_SHORT_SHIFT|USE_EXTRA_OP
-  ; TODO: requires "byte" or "word" if the first arg was mem
   jmp .done ; don't write the cl arg into ModRM (we need the extra op there)
   .not_shift_cl:
 
@@ -798,8 +874,11 @@ parse_arguments:
   cmp ax, 1
   jne .not_shift_1
   or byte [bp+.OUT_FLAGS], USE_SHORT_SHIFT|USE_EXTRA_OP
-  ; TODO: requires "byte" or "word" if the first arg was mem
   .not_shift_1:
+
+  ; Note: 16 bit imm does not specfiy the operand size in nasm so we don't do it
+  cmp byte [bp+parse_arguments.SIZE_DETERMINED], 0
+  je .operand_size_not_specified_error
 
   ; Use the short reg opcode if we can
   test dx, SHORT_REG_AL_ONLY
@@ -818,15 +897,18 @@ parse_arguments:
   mov word [bp+.IMMEDIATE], ax
 
   test ax, 0xFF00 ; check if the upper bits are 0
-  jz .8bit_second_imm
+  jz .done ; if we're 8 bit we don't need to check size or anything (16 bit means sign extend)
+
   ; Shift only supports 8bit immedatie
   test dx, SHIFT
   jnz .invalid_argument_error
-  ; TODO: error if we asked for "byte"
-  or byte [bp+.OUT_FLAGS], IS_16
-  .8bit_second_imm: ; just leave IS_16 0 (or 1 if the "word" keyword was used)
 
-  jmp .done
+  ; It's an error if the specified size is 8 bit but we have a 16 bit imm
+  test byte [bp+.OUT_FLAGS], IS_16
+  jnz .done
+  mov bx, operand_size_mismatch_str
+  mov cx, operand_size_mismatch_len
+  jmp .error_ret
 
 .done:
   ; bp is already the output we want
@@ -847,12 +929,102 @@ parse_arguments:
   add sp, .STACK_SIZE
   ret
 
+.operand_size_not_specified_error:
+  mov bx, operand_size_not_specfied_error_str
+  mov cx, operand_size_not_specfied_error_len
+  add sp, .STACK_SIZE
+  ret
+
 .syntax_error:
   mov bx, syntax_error_str
   mov cx, syntax_error_len
 .error_ret:
   add sp, .STACK_SIZE
   ret
+
+; Arguments
+;  - ax : (non-zero) if this is a second reg shift instruction, 0 otherwise
+; Returns
+;  - bx : 0 if successful, pointer to error string otherwise
+;  - cx : error length, or -1 if no register was found or the register index (regardless of whether it's 16 bit)
+;  - [bp+parse_arguments.OUT_FLAGS] : sets IS_16 if needed
+;  - [bp+parse_arguments.SIZE_DETERMINED] : checked and set if it wasn't already
+parse_reg_arg:
+  push dx ; Save dx (instruction flags)
+  mov dx, ax ; Use dx for the ax arg now (simplifies when we pop)
+
+  ; Check for an 8 bit register name
+  mov bx, reg_8_addressing
+  call search_registers
+  cmp cx, -1
+  jne .8bit
+  ; Check for a 16 bit register name
+  mov bx, reg_16_addressing
+  call search_registers
+  cmp cx, -1
+  jne .16bit
+  jmp .success
+
+.8bit:
+  cmp dx, 0 ; check the argument that tells us this is the second arg of a SHIFT
+  je .not_shift_cl
+  cmp cl, 1 ; the index for cl (defined by x86). Note: We already checked that this isn't a 16 bit reg above
+  jne .invalid_argument_error
+
+  ; If we have a `shift mem/reg, cl` instruction then cl doesn't determine the
+  ; size of the op. This is the last arg so size must be determined here.
+  cmp byte [bp+parse_arguments.SIZE_DETERMINED], 0
+  jne .success
+  pop dx ; restore the instruction flags (clear the stack)
+  mov bx, operand_size_not_specfied_error_str
+  mov cx, operand_size_not_specfied_error_len
+  ret
+
+  .not_shift_cl:
+
+  cmp byte [bp+parse_arguments.SIZE_DETERMINED], 0
+  jne .check_size_match
+  mov byte [bp+parse_arguments.SIZE_DETERMINED], 1
+  jmp .success ; just leave IS_16 at 0
+
+  .check_size_match:
+  ; Size was already determined so we have to match 8 bit now
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_16
+  jnz .size_mismatch_error
+  jmp .success
+
+.16bit:
+  ; Shift is only allowed cl as the second arg
+  cmp dx, 0 ; check the argument that tells us this is the second arg of a SHIFT
+  jne .invalid_argument_error
+
+  cmp byte [bp+parse_arguments.SIZE_DETERMINED], 0
+  je .set_is_16
+  ; Size was already determined so we have to match 16 bit now
+  test byte [bp+parse_arguments.OUT_FLAGS], IS_16
+  jz .size_mismatch_error
+  ; fallthrough
+  .set_is_16:
+  or byte [bp+parse_arguments.OUT_FLAGS], IS_16
+
+  mov byte [bp+parse_arguments.SIZE_DETERMINED], 1
+  ; fallthrough
+
+.success:
+  xor bx, bx ; success
+  ; fallthrough
+  .ret:
+  pop dx ; restore the instruction flags
+  ret
+
+.size_mismatch_error:
+  mov bx, operand_size_mismatch_str
+  mov cx, operand_size_mismatch_len
+  jmp .ret
+.invalid_argument_error:
+  mov bx, invalid_argument_error_str
+  mov cx, invalid_argument_error_len
+  jmp .ret
 
 ; Parse a memory addressing argument. Assumes you've already checked for '['.
 ;
@@ -1145,5 +1317,11 @@ hex_constant_too_big_len: equ $-hex_constant_too_big_str
 
 invalid_string_length_str: db "Character literals must be exactly 1 or 2 chars."
 invalid_string_length_len: equ $-invalid_string_length_str
+
+operand_size_mismatch_str: db "Operand sizes (16bit vs 8bit) don't match."
+operand_size_mismatch_len: equ $-operand_size_mismatch_str
+
+operand_size_not_specfied_error_str: db 'Operand size could not be inferred. Specify "byte" or "word".'
+operand_size_not_specfied_error_len: equ $-operand_size_not_specfied_error_str
 
 %include "assembler/data.asm"

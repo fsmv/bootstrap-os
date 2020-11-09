@@ -31,6 +31,10 @@ mov bx, [bp+di]
 mov bx, [bx+si]
 mov bx, [bx+di]
 mov bx, [0x10]
+; Memory with displacement
+mov cx, [bp+0x10] ; 8 bit
+mov cx, [si+0xABC] ; 16 bit
+mov cx, [es:bx+si+0xABC] ; 16 bit (with a segment prefix and another +)
 ; All segment prefixes
 mov bx, [es:bx]
 mov bx, [ds:bp+si]
@@ -95,7 +99,7 @@ add ch, [bp]
 add [bx], ch
 add al, bh
 
-;and bx, 0x9 ; TODO: nasm uses the special sign extend opcode for this if you don't say "byte"
+and bx, 0x9AB ; Note: nasm uses the special sign extend opcode if you don't use a 16 bit imm
 and cx, cx
 and cx, [bp]
 and ax, bp
@@ -104,7 +108,7 @@ and cl, ch
 and ch, [di]
 and al, bh
 
-;or bx, 0x9
+or bx, 0x9AB
 or cx, cx
 or cx, [bp]
 or ax, bp
@@ -131,13 +135,13 @@ xor cl, ch
 xor cl, [bx+si]
 xor al, bh
 
-;sub bx, 0x9
+sub bx, 0x9AB
 sub cx, cx
 sub cx, [bp]
 sub ax, bp
 sub bl, 0xFA
 sub cl, ch
-sub ch, [di]
+sub byte ch, [di]
 sub al, bh
 
 sbb bx, 0xACDC
@@ -145,7 +149,7 @@ sbb cx, cx
 sbb cx, [bx]
 sbb ax, bp
 sbb bl, 0xFA
-sbb ch, [bp]
+sbb byte ch, [bp]
 sbb [bx], ch
 sbb al, bh
 
@@ -153,7 +157,7 @@ sbb al, bh
 test cx, 0x01
 test cl, 0x01
 test bx, ax
-test [di], sp
+test word [di], sp
 test ax, bx
 test al, cl
 
@@ -171,31 +175,31 @@ jmp [bx]
 ; ONE_REG (maybe also SHORT_REG)
 inc cx
 inc al
-; inc [di] ; TODO: nasm requires operand size
+inc byte [di]
 dec cx
 dec al
-;dec [di]
+dec word [di]
 
 div cx
 div al
-;div [di]
+div word [di]
 idiv cx
 idiv al
-;idiv [di]
+idiv byte [di]
 
 mul cx
 mul al
-;mul [di]
+mul word [di]
 imul cx
 imul al
-;imul [di]
+imul byte [di]
 
 not cx
 not al
-;not [di]
+not byte [di]
 neg cx
 neg al
-;neg [di]
+neg word [di]
 
 ; IMM_8|SHORT_REG_DX_ONLY
 ; TODO: nasm expects the required al parameter first parametere but we don't want it
@@ -221,18 +225,18 @@ les ax, [si]
 
 ; SHIFT (reg/mem, imm8 or reg/mem, 1 or reg/mem, cl)
 rcl cl, 0x02
-;rcr [bx], 0x1 ; TODO: nasm wants operand size
+rcr byte [bx], 0x1
 rol ax, cl
 ror bx, cl
 sal dh, 0x8
-sar dl, 0x15
+sar di, 0x15
 shl dl, 0x1
-shr ah, 0x2 ; TODO: nasm wants operand size [es:di], 0x12
+shr word [es:di], 0x12
 
 ; NO_ARG|IMM_16
 ret
 retf
-ret 0x1201 ; TODO: this doesn't infer 8bit when you don't type 3-4 chars
+ret 0x05
 retf 0x5678
 
 ; REG_16|SHORT_REG
