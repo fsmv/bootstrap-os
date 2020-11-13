@@ -251,7 +251,7 @@ run_code:
 
   .no_error:
 
-%if 0
+%if 1
   ; Placeholder: just print the code we outputted instead of running it
   mov si, di
   xor di, di

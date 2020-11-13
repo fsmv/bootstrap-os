@@ -15,12 +15,14 @@ inc bh
 ; All 16 bit reg args
 dec ax
 dec bx
-dec cx
+test_label: dec cx
 dec dx
 dec si
 dec di
 dec sp
 dec bp
+.test_local_label:
+
 ; All memory args
 mov bx, [si]
 mov bx, [di]

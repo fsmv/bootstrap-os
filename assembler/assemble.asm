@@ -25,32 +25,113 @@ assemble:
   ;  - have a resolved/unresolved flag we can flip as we go and fill in values
   ;  - just write the data right before the assembled code
   ;  - need to handle contextually using relative addresses instead of absolute
+  ;  - Build the symbol table like the instructions lists using insertion sort.
+  ;    - Then add a constant data size skip to the search function and reuse it.
+  ;      (and this function would return the pointer to the extra data)
+  ;    - Then we can even stick all the opcodes together next to the strings in
+  ;      one array (i.e. array of struct instead of struct of arrays)
+
+
+  push si ; save the start position before we do the first pass
+  mov cx, 1 ; keep a line number count for error reporting
+; First pass over the code to build the symbol table
+_label_loop:
+  cmp byte [ds:si], 0
+  je .finish_label_loop
+
+  call skip_to_the_code
+  test al, al
+  jnz .next_line_or_done
+
+  call parse_identifier
+  cmp byte [ds:si], ':'
+  je .save_label
+  ; This wasn't a label. Could be an instruction or a syntax error (if it's an
+  ; error we'll catch it in the assembling pass)
+  call skip_to_end_of_line
+  jmp .next_line_or_done
+
+.save_label:
+  ; Now that we've seen the ':' check for the invalid first char error
+  test bx, bx
+  jnz .error_ret
+
+  ; Placeholder: print the length of the ident and dh = 1 if it was local
+  mov cx, dx
+  call print_hex
+
+  ; TODO local labels (dh != 0)
+
+  ; TODO: need insertion sort to find the write pos
+  ;   - Maybe we can use the search call to find the place to insert
+  ;   - Is there anything we can do about having to keep moving the data down to
+  ;     insert? Should we actually do a different algorithm?
+  ; TODO: Write a symbol table entry
+  ;   - Just writing into [es:di] before the assembeled code
+  ;   - Label name: [ds:si-bl] to [ds:si]
+  ;   - Save the line number
+  ;   - Need a flag for being unresolved?
+
+  call skip_to_end_of_line ; we check for syntax errors after the label in _assemble_loop
+  jmp .next_line_or_done
+
+; Used to forward an error (in bp, cx) from a subroutine
+; TODO: deduplicate?
+.error_ret:
+  pop dx ; return the line count in dx
+  ret
+
+.next_line_or_done:
+  inc cx ; count the line we just parsed
+
+  cmp byte [ds:si], 0
+  je .finish_label_loop
+  ; if we're not at the end of the buffer, then we have a \n to skip
+  inc si
+  jmp _label_loop
+
+.finish_label_loop:
+  pop si ; restore the pointer to the beginning of the code
+  ; fallthrough
 
   ; Second pass to parse the instructions
   ; TODO: off by one with the line number when returning errors (but not in the tester)
   mov cx, 1 ; keep a line number count for error reporting
-assemble_loop:
+_assemble_loop:
   cmp byte [ds:si], 0
   je done_assembling
   push cx ; save the line count so we can use cx
 
-  ; Skip beginning of line whitespace
-  call skip_spaces
-  ; Skip blank lines
-  cmp byte [ds:si], 0
-  je .next_line_or_done
-  cmp byte [ds:si], `\n`
-  je .next_line_or_done
+  call skip_to_the_code
+  test al, al
+  jnz .next_line_or_done
 
-  ; Skip comment lines
-  cmp byte [ds:si], ';'
-  jne .not_comment
-  call skip_to_end_of_line
-  jmp .next_line_or_done
-  .not_comment:
+  call parse_identifier
+  cmp byte [ds:si], ':'
+  je .skip_and_resolve_label
 
-  ; TODO: parse labels and fill in values for line numbers as we hit them
+  xor dh, dh ; clear the flag for whether or not it was a local label
+  sub si, dx ; move back to the start of the "identifier" we parsed
 
+  jmp .assemble_instruction ; If there was no ':' it might be an instruction or a syntax error
+
+  .skip_and_resolve_label:
+  ; Now that we've seen the ':' check for the invalid first char error
+  ; This should have already been caught in _label_loop, but why not
+  test bx, bx
+  jnz .error_ret
+  inc si ; parse_identifier already skipped the name, now skip the ':'
+  ; TODO: put di in the symbol table for this label
+
+  ; Skip any whitespace or comments that might be after the label
+  call skip_to_the_code
+  test al, al
+  jnz .next_line_or_done
+
+  ; If there's more code after the label, we allow instructions on the same line
+  ; fallthrough
+
+.assemble_instruction:
   ; We have 3 cases for assembling the instruction: jmp, jcc, and all others
   ; (due to the differences in opcode encoding). So we need to check which case
   ; we're in first.
@@ -284,7 +365,7 @@ assemble_loop:
   je done_assembling
   ; if we're not at the end of the buffer, then we have a \n to skip
   inc si
-  jmp assemble_loop
+  jmp _assemble_loop
 
 ; Used to forward an error (in bp, cx) from a subroutine
 .error_ret:
@@ -311,6 +392,111 @@ no_code_error:
   mov dx, 1 ; just always say the error is the first line
   mov bx, no_code_error_str
   mov cx, no_code_error_len
+  ret
+
+; Returns
+;  - al : 0 if we're not at the end of the line, 1 if we are
+skip_to_the_code:
+  ; Skip beginning of line whitespace
+  call skip_spaces
+
+  ; Skip blank lines
+  cmp byte [ds:si], 0
+  je .at_end_of_line
+  cmp byte [ds:si], `\n`
+  je .at_end_of_line
+
+  ; Skip comment lines
+  cmp byte [ds:si], ';'
+  jne .at_the_code
+  call skip_to_end_of_line
+  ; fallthrough
+
+  .at_end_of_line:
+  mov al, 1
+  ret
+  .at_the_code:
+  xor al, al
+  ret
+
+; Matching nasm:
+;  > Valid characters in labels are letters, numbers, _, $, #, @, ~, ., and ?
+;  > The only characters which may be used as the first character of an
+;  > identifier are letters, . (for local labels), _ and ?
+;
+; Returns:
+;  - dl : Length of the identifier (note: nasm's max is 0x0FFF)
+;  - dh : 1 if it was a local label, 0 otherwise (TODO: should we just check the first char as the caller?)
+;  - bx : 0 if the first char was a valid ident, pointer to error otherwise
+;  - cx : unchanged or the length of the error string
+parse_identifier:
+  xor dx, dx ; Start at 0, not a local label
+  xor bx, bx ; No error
+
+  ; Check for the first char regex: [A-Za-z._?]
+  cmp byte [ds:si], 'A'
+  jb .first_char_not_letter
+  cmp byte [ds:si], 'Z'
+  jbe .next_char
+  cmp byte [ds:si], 'a'
+  jb .first_char_not_letter ; could be _
+  cmp byte [ds:si], 'z'
+  jbe .next_char
+  jmp .invalid_first_char
+  .first_char_not_letter:
+  cmp byte [ds:si], '.'
+  je .local_label
+  cmp byte [ds:si], '_'
+  je .next_char
+  cmp byte [ds:si], '?'
+  je .next_char
+  jmp .invalid_first_char
+
+.local_label:
+  mov dh, 1 ; set the return flag for this
+  ; fallthrough
+.loop:
+  ; Check if it's a valid middle char [0-9?-Za-z_.$#~]
+  cmp byte [ds:si], '0'
+  jb .maybe_symbol
+  cmp byte [ds:si], '9'
+  jbe .next_char
+  cmp byte [ds:si], '?' ; ? then @ are before A which are both valid chars
+  jb .end_of_ident ; no more valid chars between 9 and ?
+  cmp byte [ds:si], 'Z'
+  jbe .next_char
+  cmp byte [ds:si], 'a'
+  jb .maybe_symbol ; could be _
+  cmp byte [ds:si], 'z'
+  jbe .next_char
+  ; fallthrough
+  .maybe_symbol: ; ? and @ are taken care of above
+  cmp byte [ds:si], ' ' ; technically not needed but I want to skip the branches in this common case
+  jbe .end_of_ident ; any whitespace or \0
+  cmp byte [ds:si], '_'
+  je .next_char
+  cmp byte [ds:si], '.'
+  je .next_char
+  cmp byte [ds:si], '$'
+  je .next_char
+  cmp byte [ds:si], '#'
+  je .next_char
+  cmp byte [ds:si], '~'
+  je .next_char
+  jmp .end_of_ident ; not a valid char
+
+  .next_char:
+  inc si ; next char
+  inc dl ; keep track of the length
+  jmp .loop
+
+  .invalid_first_char:
+  ; TODO error? but when building the symbol table we just want to skip here...
+  mov bx, invalid_first_ident_char_error_str
+  mov cx, invalid_first_ident_char_error_len
+  jmp .next_char ; still count out the identifier so we can check for the : in the first pass
+
+  .end_of_ident:
   ret
 
 ; Search an instruction list (either instructions or jcc_instructions) for a
@@ -1323,5 +1509,8 @@ operand_size_mismatch_len: equ $-operand_size_mismatch_str
 
 operand_size_not_specfied_error_str: db 'Operand size could not be inferred. Specify "byte" or "word".'
 operand_size_not_specfied_error_len: equ $-operand_size_not_specfied_error_str
+
+invalid_first_ident_char_error_str: db 'Labels can only start with letters or . _ ?'
+invalid_first_ident_char_error_len: equ $-invalid_first_ident_char_error_str
 
 %include "assembler/data.asm"
