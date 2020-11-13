@@ -172,7 +172,7 @@ _assemble_loop:
   mov al, JMP_REG_OPCODE
   mov [es:di], al
   inc di
-  mov cx, JMP_EXTRA_INDEX ; this is so write_mem_reg can add the value into the modrm byte
+  mov cl, JMP_EXTRA_OPCODE ; this is so write_mem_reg can add the value into the modrm byte
   call write_mem_reg
   jmp .next_line_or_done
 
@@ -191,10 +191,11 @@ _assemble_loop:
   jmp .next_line_or_done
 
 .jcc_instruction:
-  mov bp, jcc_instructions ; if we matched J we might need to search the jcc list
-  call search_instructions
+  call search_jcc_instructions
   test bx, bx
   jnz .error_ret
+
+  mov cx, bp ; save the pointer to the extra data in cx (which parse_arguments saves)
 
   mov dx, JCC_FLAGS
   call parse_arguments
@@ -213,26 +214,23 @@ _assemble_loop:
   ; fallthrough
   .jcc_near: ; 8 bit
   ; Get the opcode value
-  mov bx, jcc_opcodes
-  add bx, cx
-  add byte al, [cs:bx] ; al += jcc_opcodes[instruction_index]
+  mov bx, cx ; return pointer from search_instructions
+  add al, [cs:bx] ; al += opcode from jcc_instructions
   ; Write the opcode
-  mov byte [es:di], al
+  mov [es:di], al
   inc di
   call write_imm
   jmp .next_line_or_done
 
 .normal_instruction:
-  mov bp, instructions ; the default list to search
-  call search_instructions
+  call search_normal_instructions
   test bx, bx
   jnz .error_ret
 
-  ; Lookup the acceptable argument types and parse the args
-  mov bx, cx
-  shl bx, 1 ; multiply the index by 2 because the flags are 2 bytes
-  add bx, supported_args
-  mov word dx, [cs:bx]
+  ; Save the acceptable argument types in dx
+  mov dx, [cs:bp+instructions.supported_args]
+  mov cx, bp ; save the pointer to the extra data for after parse_arguments
+
   call parse_arguments
   test bx, bx
   jnz .error_ret
@@ -249,9 +247,8 @@ _assemble_loop:
 .reg_opcode:
   call maybe_write_segment_prefix
   ; Get the opcode value
-  mov bx, reg_opcodes
-  add bx, cx
-  mov byte al, [cs:bx] ; al = reg_opcodes[instruction_index]
+  mov bx, cx
+  mov al, [cs:bx+instructions.reg_opcode]
 
   ; If we're using a swapped args we need opcode +2 for 8bit and +3 for 16bit
   test byte [bp+parse_arguments.OUT_FLAGS], USE_SWAP_OPCODE
@@ -266,20 +263,21 @@ _assemble_loop:
   .8bit_reg_opcode:
 
   ; Write the opcode to the output
-  mov byte [es:di], al
+  mov [es:di], al
   inc di
 
   test byte [bp+parse_arguments.OUT_FLAGS], IS_NO_ARG
   jnz .next_line_or_done ; if it was a no_arg we have nothing else to write
 
+  mov byte cl, [cs:bx+instructions.extra_opcode]
   call write_mem_reg
   jmp .next_line_or_done
 
 .short_reg_opcode:
-  mov bx, short_reg_opcodes
-  add bx, cx
-  mov byte al, [cs:bx] ; al = short_reg_opcodes[instruction_index]
-  add byte al, [bp+parse_arguments.MODRM] ; add the arg in (this is how short reg ops work)
+  ; Get the opcode value
+  mov bx, cx
+  mov al, [cs:bx+instructions.short_reg_opcode]
+  add al, [bp+parse_arguments.MODRM] ; add the arg in (this is how short reg ops work)
 
   ; Unless we're in a special case short_reg we are always 16 bit so we don't need +1
   test dx, SHORT_REG_AL_ONLY|SHORT_REG_DX_ONLY
@@ -290,7 +288,7 @@ _assemble_loop:
   .short_reg_opcode_done:
 
   ; Write the opcode to the output
-  mov byte [es:di], al
+  mov [es:di], al
   inc di
 
   ; Only happens for SHORT_REG_AL_ONLY instructions
@@ -314,39 +312,32 @@ _assemble_loop:
   .shift_not_16:
 
   ; Write the opcode to the output
-  mov byte [es:di], al
+  mov [es:di], al
   inc di
 
+  mov bx, cx
+  mov cl, [cs:bx+instructions.extra_opcode]
   call write_mem_reg ; also includes the extra opcode
   jmp .next_line_or_done
 
 .imm_opcode:
   call maybe_write_segment_prefix
   ; Get the opcode value
-  mov bx, immediate_opcodes
-  add bx, cx
-  mov byte al, [cs:bx] ; al = reg_opcodes[instruction_index]
+  mov bx, cx
+  mov al, [cs:bx+instructions.imm_opcode]
   test byte [bp+parse_arguments.OUT_FLAGS], IS_16
   jz .8bit_imm_opcode
   inc al ; for 16 bit we need opcode+1
   .8bit_imm_opcode:
   ; Write the opcode to the output
-  mov byte [es:di], al
+  mov [es:di], al
   inc di
 
   test byte [bp+parse_arguments.OUT_FLAGS], USE_EXTRA_OP
   jz .no_modrm
   ; This happens when we have a reg, imm instruction that's not SHORT_REG
-  mov byte al, [bp+parse_arguments.MODRM]
-  ; Write the extra opcode into ModRM (copy pasted from .reg_opcode)
-  mov bx, extra_opcodes
-  add bx, cx
-  mov byte ah, [cs:bx] ; ah = extra_opcodes[instruction_index]
-  shl ah, 3 ; This goes in the middle reg/opcode field (after the low 3 bits which is the R/M field)
-  or al, ah ; Add it into the modRM byte
-  ; Write the ModRM to the output
-  mov byte [es:di], al
-  inc di
+  mov cl, [cs:bx+instructions.extra_opcode]
+  call write_mem_reg
   .no_modrm:
 
   call write_imm
@@ -499,8 +490,19 @@ parse_identifier:
   .end_of_ident:
   ret
 
-; Search an instruction list (either instructions or jcc_instructions) for a
-; match to the text in the input [ds:si] returning the instruction index
+search_normal_instructions:
+  mov bp, instructions
+  mov cx, instructions.extra_data_size
+  jmp search_data_table
+
+search_jcc_instructions:
+  mov bp, jcc_instructions
+  mov cx, jcc_instructions.extra_data_size
+  jmp search_data_table
+
+; Search a sorted data table (instructions, jcc_instructions, or the symbol
+; table) for a match to the text in the input [ds:si] returning the row number
+; and pointer to the data.
 ;
 ; The algorithm is to search through the sorted list of (size, str) rows by
 ; first matching just the first character, then the second, etc. until we find
@@ -512,20 +514,25 @@ parse_identifier:
 ; Args:
 ;  - [cs:bp] : the instruction list to search
 ;  - [ds:si] : the input code (which will be advanced by this function)
+;  - cx      : constant amount of data after each string in the search list
+;              which we skip over
 ; Returns:
 ;  - bx : 0 if successful, pointer to error message otherwise
-;  - cx : the instruction index (or error message length on error)
-;  - [ds:si] : advanced to one char past the end of the instruction name
-search_instructions:
+;  - cx : error message length or unchanged
+;  - [cs:bp] : the start of the extra data for the found row
+;  - [ds:si] : advanced to one char past the end of the matched name
+search_data_table:
   push di ; save the output code location
 
-  mov di, 0 ; offset into each instruction we're currently checking
-  xor cx, cx ; the instruction index
-  xor bx, bx ; the length of the current instruction string in the list
+  mov di, 0 ; offset into the data table for the string we're currently checking
+  xor bx, bx ; the length of the current string in the table
 
 .next_char:
   inc di ; increase the offset to read from (start at 1)
-  mov byte ah, [ds:si] ; save the current char we're searching
+  mov byte ah, [ds:si] ; save the current char we're searching out of the code
+
+  ; TODO: how can we do a case-sensitive compare with a label for the symbol
+  ;       table and a case-insensitive compare for instructions?
 
   ; Convert to lowercase and throw an error if we found a non-letter char
   sub ah, 'A'
@@ -540,15 +547,15 @@ search_instructions:
   dec di
   jz .error
   cmp bx, di ; if the last one had the same length as the source code, then we're done
-  je .found_instruction
+  je .found_match
 
   .is_letter:
   add ah, 'a' ; Turn it back into the ascii char instead of the letter number
 
-  inc si ; End one past the end of the instruction
+  inc si ; End one past the end of the matched string
   ; fallthrough
 .check_nth_char:
-  ; bx = size of the current instruction string in the list
+  ; bx = size of the current key string in the list
   mov byte bl, [cs:bp]
 
   test bl, bl ; if we hit the end of the list we didn't get a match
@@ -556,26 +563,30 @@ search_instructions:
   jmp .error
   .not_end:
 
-  ; If the source code instruction is longer than the one in the list, skip it
+  ; If the source code text is longer than the key in the table, skip it
   cmp di, bx
-  ja .next_instruction
+  ja .next_row
   ; If the Nth char matches now we need to check the next one
   cmp byte [cs:bp+di], ah
   je .next_char
 
   ; fallthrough (no match)
-  .next_instruction:
-  add bp, bx ; Keep going to the next instruction in the list
+  .next_row:
+  add bp, bx ; Skip the length of the key string
   inc bp ; +1 to skip the size byte
-  inc cx
+  add bp, cx ; skip the extra data
   jmp .check_nth_char
 
-  .found_instruction:
+  .found_match:
+  ; Move bp to the extra data for the return
+  add bp, bx ; Skip the string length
+  inc bp ; +1 to skip the size byte
   pop di ; restore the output code location
   xor bx, bx
   ret
   .error:
   pop di ; clear the stack
+  ; TODO: this will need to change for the symbol table lookup
   mov bx, instruction_not_found_error_str
   mov cx, instruction_not_found_error_len
   ret
@@ -627,24 +638,25 @@ maybe_write_segment_prefix:
   .no_segment_prefix:
   ret
 
+; Arguments:
+;  - [bp]    : the output from parse_arguments
+;  - cl      : the extra_opcode byte (will check if we need it inside)
+;  - [es:di] : the location to write the modrm byte and optional displacement (gets incremented)
 write_mem_reg:
-  mov byte al, [bp+parse_arguments.MODRM] ; read the modRM byte
+  mov al, [bp+parse_arguments.MODRM] ; read the modRM byte
   ; Add the extra opcode into the modRM byte if we need to
   test byte [bp+parse_arguments.OUT_FLAGS], USE_EXTRA_OP
   jz .no_extra_op
-  mov bx, extra_opcodes
-  add bx, cx
-  mov byte ah, [cs:bx] ; ah = extra_opcodes[instruction_index]
-  shl ah, 3 ; This goes in the middle reg/opcode field (after the low 3 bits which is the R/M field)
-  or al, ah ; Add it into the modRM byte
+  shl cl, 3 ; The extra_opcode goes in the middle reg/opcode field (after the low 3 bits which is the R/M field)
+  or al, cl ; Add it into the modRM byte
   .no_extra_op:
 
   ; Write the modRM byte
-  mov byte [es:di], al
+  mov [es:di], al
   inc di
 
   ; Write the displacement if needed
-  mov word dx, [bp+parse_arguments.DISPLACEMENT]
+  mov bx, [bp+parse_arguments.DISPLACEMENT]
   and al, 0xC7 ; Clear the middle 3 bits reg field
   cmp al, MODRM_ABSOLUTE_ADDRESS
   je .write_disp_16
@@ -656,11 +668,11 @@ write_mem_reg:
   ret ; no displacement
 
   .write_disp_8:
-  mov byte [es:di], dl
+  mov [es:di], bl
   inc di
   ret
   .write_disp_16:
-  mov word [es:di], dx
+  mov [es:di], bx
   add di, 2
   ret
 

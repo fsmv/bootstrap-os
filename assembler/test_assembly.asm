@@ -96,7 +96,7 @@ add bx, 0xACDC
 add cx, cx
 add cx, [bx]
 add ax, bp
-add bl, 0xFA
+add byte [bx], 0xFA
 add ch, [bp]
 add [bx], ch
 add al, bh
@@ -141,7 +141,7 @@ sub bx, 0x9AB
 sub cx, cx
 sub cx, [bp]
 sub ax, bp
-sub bl, 0xFA
+sub byte [bp+0x50], 0xFA
 sub cl, ch
 sub byte ch, [di]
 sub al, bh
