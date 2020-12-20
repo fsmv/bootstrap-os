@@ -1,3 +1,12 @@
+; Constants for offsets into symbol table data rows
+;
+; The layout is basically the same as instructions and jcc_instructions but we
+; generate the data in memory
+symbol_table: ; Note: this label is just for namespacing the two below
+  .extra_data_size: equ 3
+  .location: equ 0 ; line number if not resolved, address if resolved
+  .is_resolved: equ 2
+
 ; MOD_* constants and *_addressing constants come from:
 ; Vol 2. Chapter 2.1.5 Table 2-1
 

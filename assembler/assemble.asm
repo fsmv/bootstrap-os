@@ -32,12 +32,17 @@ assemble:
   ;      one array (i.e. array of struct instead of struct of arrays)
 
 
+  ; We're writing to symbol table to [es:di] before the code we output.
+  ; Put in a 0 at the start so that we can call search_data_table on it.
+  mov byte [es:di], 0
+
   push si ; save the start position before we do the first pass
   mov cx, 1 ; keep a line number count for error reporting
 ; First pass over the code to build the symbol table
 _label_loop:
   cmp byte [ds:si], 0
   je .finish_label_loop
+  push cx ; save the line count so we can use cx
 
   call skip_to_the_code
   test al, al
@@ -52,7 +57,8 @@ _label_loop:
   jmp .next_line_or_done
 
 .save_label:
-  ; Now that we've seen the ':' check for the invalid first char error
+  ; Now that we've seen the ':' check for the invalid ident (parse_identifier
+  ; result)
   test bx, bx
   jnz .error_ret
 
@@ -60,14 +66,18 @@ _label_loop:
   mov cx, dx
   call print_hex
 
-  ; TODO local labels (dh != 0)
+  xor dh, dh ; TODO local labels (dh != 0)
 
-  ; TODO: need insertion sort to find the write pos
-  ;   - Maybe we can use the search call to find the place to insert
-  ;   - Is there anything we can do about having to keep moving the data down to
-  ;     insert? Should we actually do a different algorithm?
+  mov bx, di ; set the search table to the symbol table
+  mov cx, symbol_table.extra_data_size
+  mov bp, dx ; the length of the symbol we're searching for
+  call search_data_table
+
+  test cx, cx
+  jz .duplicate_label_error ; if we found a match
+
   ; TODO: Write a symbol table entry
-  ;   - Just writing into [es:di] before the assembeled code
+  ;   - Writing into [es:bx] (and need to move all data after it forward)
   ;   - Label name: [ds:si-bl] to [ds:si]
   ;   - Save the line number
   ;   - Need a flag for being unresolved?
@@ -75,13 +85,18 @@ _label_loop:
   call skip_to_end_of_line ; we check for syntax errors after the label in _assemble_loop
   jmp .next_line_or_done
 
-; Used to forward an error (in bp, cx) from a subroutine
-; TODO: deduplicate?
+.duplicate_label_error:
+  mov bx, duplicate_label_error_str
+  mov cx, duplicate_label_error_len
+  ; fallthrough
+; Used to forward an error (in bx, cx) from a subroutine
 .error_ret:
-  pop dx ; return the line count in dx
+  pop dx ; return the line count in dx (it was in cx previously)
+  pop si ; clear the pointer to the start of the code from the stack
   ret
 
 .next_line_or_done:
+  pop cx
   inc cx ; count the line we just parsed
 
   cmp byte [ds:si], 0
@@ -192,10 +207,10 @@ _assemble_loop:
 
 .jcc_instruction:
   call search_jcc_instructions
-  test bx, bx
-  jnz .error_ret
+  test cx, cx
+  jnz .instruction_not_found_error
 
-  mov cx, bp ; save the pointer to the extra data in cx (which parse_arguments saves)
+  mov cx, bx ; save the pointer to the extra data in cx (which parse_arguments saves)
 
   mov dx, JCC_FLAGS
   call parse_arguments
@@ -224,12 +239,12 @@ _assemble_loop:
 
 .normal_instruction:
   call search_normal_instructions
-  test bx, bx
-  jnz .error_ret
+  test cx, cx
+  jnz .instruction_not_found_error
 
   ; Save the acceptable argument types in dx
-  mov dx, [cs:bp+instructions.supported_args]
-  mov cx, bp ; save the pointer to the extra data for after parse_arguments
+  mov dx, [cs:bx+instructions.supported_args]
+  mov cx, bx ; save the pointer to the extra data for after parse_arguments
 
   call parse_arguments
   test bx, bx
@@ -358,7 +373,12 @@ _assemble_loop:
   inc si
   jmp _assemble_loop
 
-; Used to forward an error (in bp, cx) from a subroutine
+.instruction_not_found_error:
+  mov bx, instruction_not_found_error_str
+  mov cx, instruction_not_found_error_len
+  ; fallthrough
+
+  ; Used to forward an error (in bx, cx) from a subroutine
 .error_ret:
   pop dx ; return the line count in dx
   ret
@@ -418,7 +438,7 @@ skip_to_the_code:
 ; Returns:
 ;  - dl : Length of the identifier (note: nasm's max is 0x0FFF)
 ;  - dh : 1 if it was a local label, 0 otherwise (TODO: should we just check the first char as the caller?)
-;  - bx : 0 if the first char was a valid ident, pointer to error otherwise
+;  - bx : 0 if there was a valid ident, pointer to error otherwise
 ;  - cx : unchanged or the length of the error string
 parse_identifier:
   xor dx, dx ; Start at 0, not a local label
@@ -490,15 +510,51 @@ parse_identifier:
   .end_of_ident:
   ret
 
+; Wrapper to call search_data_table for normal instructions
+;
+; Args:
+;  - [ds:si] : the input code to search
+; Returns
+;  - cx      : 0 if it was a match, 1 otherwise
+;  - [cs:bx] : pointer to the extra data on match
+;  - [ds:si] : advanced to one char past the end of the matched name
 search_normal_instructions:
-  mov bp, instructions
+  ; Save es and set es = cs
+  mov ax, es
+  push ax
+  mov ax, cs
+  mov es, ax
+  mov bx, instructions ; [es:bx] is the search table
   mov cx, instructions.extra_data_size
-  jmp search_data_table
+  xor bp, bp
+  call search_data_table
+  ; Restore es
+  pop ax
+  mov es, ax
+  ret
 
+; Wrapper to call search_data_table for jcc instructions
+;
+; Args:
+;  - [ds:si] : the input code to search
+; Returns
+;  - cx      : 0 if it was a match, 1 otherwise
+;  - [cs:bx] : pointer to the extra data on match
+;  - [ds:si] : advanced to one char past the end of the matched name
 search_jcc_instructions:
-  mov bp, jcc_instructions
+  ; Save es and set es = cs
+  mov ax, es
+  push ax
+  mov ax, cs
+  mov es, ax
+  mov bx, jcc_instructions ; [es:bx] is the search table
   mov cx, jcc_instructions.extra_data_size
-  jmp search_data_table
+  xor bp, bp
+  call search_data_table
+  ; Restore es
+  pop ax
+  mov es, ax
+  ret
 
 ; Search a sorted data table (instructions, jcc_instructions, or the symbol
 ; table) for a match to the text in the input [ds:si] returning the row number
@@ -512,29 +568,42 @@ search_jcc_instructions:
 ; need to count the index
 ;
 ; Args:
-;  - [cs:bp] : the instruction list to search
+;  - [es:bx] : the instruction list to search
 ;  - [ds:si] : the input code (which will be advanced by this function)
 ;  - cx      : constant amount of data after each string in the search list
 ;              which we skip over
+;  - bp      : the length of the search string in the code, or 0 if we should
+;              use tolower and stop at the first non-letter char (the first mode
+;              is for the symbol table, and the other is for instructions)
 ; Returns:
-;  - bx : 0 if successful, pointer to error message otherwise
-;  - cx : error message length or unchanged
-;  - [cs:bp] : the start of the extra data for the found row
+;  - cx      : 0 if it was a match, 1 otherwise
+;  - [es:bx] : pointer to the extra data on match;
+;              pointer to the place to insert alphabetically otherwise
 ;  - [ds:si] : advanced to one char past the end of the matched name
 search_data_table:
   push di ; save the output code location
+  push dx
 
   mov di, 0 ; offset into the data table for the string we're currently checking
-  xor bx, bx ; the length of the current string in the table
+  ; dx = size of the current key string in the list
+  mov dl, [es:bx]
+  xor dh, dh
 
-.next_char:
-  inc di ; increase the offset to read from (start at 1)
-  mov byte ah, [ds:si] ; save the current char we're searching out of the code
+  test dx, dx
+  jz .no_match ; empty search list
 
-  ; TODO: how can we do a case-sensitive compare with a label for the symbol
-  ;       table and a case-insensitive compare for instructions?
+; Read a search char out of the source code at the current column and validate
+; it, stopping the search if we run out of chars in the key identifier.
+.next_char_column:
+  mov ah, [ds:si] ; read the current char we're searching out of the code
 
-  ; Convert to lowercase and throw an error if we found a non-letter char
+  test bp, bp
+  jnz .symbol_table_mode
+  ; fallthrough
+  .instruction_search_mode:
+  ; If we don't know the length, we do tolower (for instructions) and we stop at
+  ; the first non-letter char
+
   sub ah, 'A'
   cmp ah, 'Z'-'A'
   jbe .is_letter
@@ -542,60 +611,85 @@ search_data_table:
   sub ah, 'a'-'A' ; Save an add instruction to undo the sub ah, 'A' with algebra
   cmp ah, 'z'-'a'
   jbe .is_letter
-  ; [ds:si] is not a letter (could be \0 or \n)
-
-  dec di
-  jz .error
-  cmp bx, di ; if the last one had the same length as the source code, then we're done
-  je .found_match
+  jmp .not_letter
 
   .is_letter:
-  add ah, 'a' ; Turn it back into the ascii char instead of the letter number
+  add ah, 'a' ; Turn it back into the lowercase ascii char instead of the letter index
+  jmp .valid_char
 
-  inc si ; End one past the end of the matched string
+  .not_letter:
+  ; [ds:si] is not a valid char (could be \0 or \n)
+  test di, di
+  jz .no_match ; if the first char was invalid
+  ; If we hit an invalid char but we matched the table key the whole way, then
+  ; we found a complete match.
+  cmp dx, di ; length of key string == current offset
+  je .found_match
+  jmp .no_match
+
+  .symbol_table_mode:
+  ; The caller told us the length of the symbol in the code already (bp) and has
+  ; already validated the character set, so we just check the length here.
+  cmp bp, di
+  jb .valid_char
+  je .found_match
+
+  .valid_char:
+  inc di ; increase the offset to read from to skip the size byte
+  inc si ; Do this now so we end one past the end of the matched string
   ; fallthrough
+; For the current character column we're checking in the key (ah) scan down the
+; sorted search list until we pass the key or find a match
 .check_nth_char:
-  ; bx = size of the current key string in the list
-  mov byte bl, [cs:bp]
-
-  test bl, bl ; if we hit the end of the list we didn't get a match
-  jnz .not_end
-  jmp .error
-  .not_end:
-
   ; If the source code text is longer than the key in the table, skip it
-  cmp di, bx
+  cmp di, dx
   ja .next_row
-  ; If the Nth char matches now we need to check the next one
-  cmp byte [cs:bp+di], ah
-  je .next_char
 
-  ; fallthrough (no match)
-  .next_row:
-  add bp, bx ; Skip the length of the key string
-  inc bp ; +1 to skip the size byte
-  add bp, cx ; skip the extra data
+  ; If the Nth char matches now we need to check the next one
+  cmp ah, [es:bx+di]
+  je .next_char_column
+  jb .no_match ; If we go past the char we're searching for, stop searching
+
+  ; fallthrough (still searching for the char)
+; Skip to the next row of the search list (because we're below where the key
+; would be)
+.next_row:
+  inc bx ; +1 to skip the size byte
+  add bx, dx ; Skip the length of the key string
+  add bx, cx ; skip the extra data
+
+  ; dx = size of the current key string in the list
+  mov dl, [es:bx]
+
+  ; Check for the null terminator at the end of the table
+  ; If we hit the end we didn't get a match
+  test dx, dx
+  jz .no_match
+
   jmp .check_nth_char
 
-  .found_match:
-  ; Move bp to the extra data for the return
-  add bp, bx ; Skip the string length
-  inc bp ; +1 to skip the size byte
+.found_match:
+  ; Move bx to the extra data for the return
+  inc bx ; +1 to skip the size byte
+  add bx, dx ; Skip the string length
+
+  pop dx
   pop di ; restore the output code location
-  xor bx, bx
+  xor cx, cx ; we matched
   ret
-  .error:
-  pop di ; clear the stack
-  ; TODO: this will need to change for the symbol table lookup
-  mov bx, instruction_not_found_error_str
-  mov cx, instruction_not_found_error_len
+
+.no_match:
+  pop dx
+  pop di ; restore the output code location
+  mov cx, 1 ; no match
+  ; bx is already where we want it (the pointer to the first row past the key)
   ret
 
 ; Search either reg_8_addressing or reg_16_addressing for a match in [ds:si].
 ; Leaves si unchanged.
 ;
 ; Args:
-;  - bx : the register list to search (assumes each row is 2 bytes)
+;  - [cs:bx] : the register list to search (assumes each row is 2 bytes)
 ; Returns:
 ;  - cx : -1 if not found, the index otherwise
 search_registers:
@@ -1524,5 +1618,8 @@ operand_size_not_specfied_error_len: equ $-operand_size_not_specfied_error_str
 
 invalid_first_ident_char_error_str: db 'Labels can only start with letters or . _ ?'
 invalid_first_ident_char_error_len: equ $-invalid_first_ident_char_error_str
+
+duplicate_label_error_str: db 'Found a second definition of this label. Labels must be unique.'
+duplicate_label_error_len: equ $-duplicate_label_error_str
 
 %include "assembler/data.asm"
