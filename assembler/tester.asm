@@ -94,7 +94,13 @@ error:
 
 last_instruction_input: dw 0x0000
 last_instruction_output: dw 0x0000
+generated_code_start: dw 0x0000
 num_errors: db 0x00
+
+save_output_code_start:
+  mov [cs:generated_code_start], di
+  mov [cs:last_instruction_output], di
+  ret
 
 ; Arguments: (values must be preserved)
 ;  - [ds:si] - the end of line char for the instruction line
@@ -103,13 +109,16 @@ num_errors: db 0x00
 test_assembled_instruction:
   ; Check if we wrote the same bytes as the host assembler
   mov bx, [cs:last_instruction_output]
+  mov bp, bx
+  sub bp, [cs:generated_code_start]
   .compare_loop:
   cmp bx, di
   je .done
   mov al, [es:bx]
-  cmp [cs:bx+golden_output], al
+  cmp [cs:bp+golden_output], al
   jne .fail
   inc bx
+  inc bp
   jmp .compare_loop
 
   .color: equ 0x0007 ; grey text on black background
@@ -177,11 +186,14 @@ test_assembled_instruction:
   add dl, want_str_len
 
   ; print the want bytecode
+  push di
   mov bp, [cs:last_instruction_output]
+  sub bp, [cs:generated_code_start]
   add bp, golden_output ; this buffer doesn't start at 0 in cs
   add di, golden_output ; the stop point has to be relative to the start too
+  sub di, [cs:generated_code_start]
   call print_bytecode
-  sub di, golden_output ; undo the add above to restore the state
+  pop di
 
   mov ax, BIOS_PRINT_STRING
   mov bp, line_num_str

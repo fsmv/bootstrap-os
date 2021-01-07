@@ -35,11 +35,17 @@ assemble:
   ; We're writing to symbol table to [es:di] before the code we output.
   ; Put in a 0 at the start so that we can call search_data_table on it.
   mov byte [es:di], 0
+  mov [cs:_label_loop.symbol_table_start], di ; save the start of the symbol table
+  inc di ; track the end of the symbol table in di
 
-  push si ; save the start position before we do the first pass
+  push si ; save the start code position before we do the first pass
   mov cx, 1 ; keep a line number count for error reporting
 ; First pass over the code to build the symbol table
 _label_loop:
+  jmp .end_locals
+  .symbol_table_start: dw 0x0000 ; local var (initialized above)
+  .end_locals:
+
   cmp byte [ds:si], 0
   je .finish_label_loop
   push cx ; save the line count so we can use cx
@@ -57,30 +63,67 @@ _label_loop:
   jmp .next_line_or_done
 
 .save_label:
-  ; Now that we've seen the ':' check for the invalid ident (parse_identifier
-  ; result)
+  ; Now that we've seen the ':' check for the invalid ident (parse_identifier result)
   test bx, bx
   jnz .error_ret
 
-  ; Placeholder: print the length of the ident and dh = 1 if it was local
-  mov cx, dx
-  call print_hex
+  xor dh, dh ; TODO local labels (dh != 0) we use dx below
 
-  xor dh, dh ; TODO local labels (dh != 0)
+  ; TODO: for local labels we'll have to copy the local part into the current
+  ; parent label storage area so we have a contiguous buffer for passing to
+  ; search_data_table in [ds:si]
 
-  mov bx, di ; set the search table to the symbol table
-  mov cx, symbol_table.extra_data_size
+  ; Search the symbol table for the label we found in the code
+  ;  - Finds the place to insert the new label in the sorted list
+  ;  - If the label is already in the tabel it's a duplicate definition error
+  sub si, dx ; reset to the beginning of the identifier for search_data_table
+  push si
   mov bp, dx ; the length of the symbol we're searching for
+  mov bx, [cs:.symbol_table_start] ; set the search table pointer to the symbol table
+  mov cx, symbol_table.extra_data_size
   call search_data_table
+  pop si
 
   test cx, cx
   jz .duplicate_label_error ; if we found a match
 
-  ; TODO: Write a symbol table entry
-  ;   - Writing into [es:bx] (and need to move all data after it forward)
-  ;   - Label name: [ds:si-bl] to [ds:si]
-  ;   - Save the line number
-  ;   - Need a flag for being unresolved?
+  ; Move data from [es:bx] to the end of the symbol table (di) forward by the
+  ; amount of data we need to insert for the new label in the symbol table (cx)
+  mov cx, 1  ; space to save the length of the label string
+  add cl, dl ; space for the label string
+  add cx, symbol_table.extra_data_size
+  call shift_data
+
+  ; Write the length of the label to the symbol table
+  mov [es:bx], dl
+  inc bx
+
+  ; Write the label string
+  xor bp, bp
+  .write_label_loop:
+  mov al, [ds:bp+si]
+  mov [es:bx], al
+  inc bp
+  inc bx
+  cmp bp, dx
+  jne .write_label_loop
+
+  ; Now for the extra_data section
+  ; Note: Make sure to update symbol_table.extra_data_size if this changes
+
+  ; Write symbol_table.location = the line number (since it starts unresolved)
+  pop cx
+  mov [es:bx], cx
+  add bx, 2
+  push cx
+
+  ; Write symbol_table.is_resolved = false
+  mov byte [es:bx], 0
+  inc bx
+
+  ; TODO: when we support local labels we will have to restore the real [ds:si]
+  ;       here because it will be pointing at the parent label buffer for local
+  ;       labels
 
   call skip_to_end_of_line ; we check for syntax errors after the label in _assemble_loop
   jmp .next_line_or_done
@@ -105,9 +148,90 @@ _label_loop:
   inc si
   jmp _label_loop
 
-.finish_label_loop:
+.finish_label_loop: ; Note: assumes the line number has been popped
   pop si ; restore the pointer to the beginning of the code
+
+%ifdef TESTER_CALLBACK
+  call save_output_code_start
+%endif
+
   ; fallthrough
+
+%if 1
+  ; Directly print out the bytes of the symbol table (in case it's really bad)
+  xor dx, dx
+  mov si, [cs:.symbol_table_start]
+  .raw_print_loop:
+  cmp si, di
+  je .raw_loop_done
+
+  mov cl, [es:si]
+  call print_hex_byte
+
+  mov ah, 0x0E ; Scrolling teletype BIOS routine (used with int 0x10)
+  xor bx, bx ; Clear bx. bh = page, bl = color
+  mov al, ' '
+  int 0x10
+
+  inc si
+  inc dl
+  test dl, 0x0010
+  jz .same_line
+  xor dl, dl
+  ; next line
+  inc dh
+  mov ah, 0x0E ; Scrolling teletype BIOS routine (used with int 0x10)
+  mov al, `\n`
+  int 0x10
+  mov al, `\r`
+  int 0x10
+  .same_line:
+  jmp .raw_print_loop
+  .raw_loop_done:
+  ; set the cursor position for the parsed table
+  add dh, 2
+  xor dl, dl
+
+  ; Print out the (parsed) symbol table we generated
+  mov di, [cs:.symbol_table_start]
+  mov bp, di ; BIOS print string wants [es:bp] so we'll use bp for the symbol table
+
+  .print_symbol_table:
+  xor ch, ch
+  mov cl, [es:bp] ; the length of the current entry in the symbol table
+  test cx, cx
+  jz .end_of_table
+
+  mov ax, 0x1301 ; BIOS print string with moving cursor
+  mov bx, 0x000C ; page number and attribute
+  inc bp ; move the pointer to the start of the string
+  int 0x10 ; print the label string
+  add bp, cx ; move the pointer forward to the extra data
+
+  mov ah, 0x0E ; Scrolling teletype BIOS routine (used with int 0x10)
+  xor bx, bx ; Clear bx. bh = page, bl = color
+  mov al, ' '
+  int 0x10
+
+  mov cx, [es:bp] ; symbol_table.location
+  call print_hex
+  add bp, 2
+
+  mov ah, 0x0E ; Scrolling teletype BIOS routine (used with int 0x10)
+  xor bx, bx ; Clear bx. bh = page, bl = color
+  mov al, ' '
+  int 0x10
+
+  mov cl, [es:bp] ; symbol_table.is_resolved
+  call print_hex_byte
+  inc bp
+
+  inc dh ; print the next one on the next row
+  jmp .print_symbol_table
+
+  .end_of_table:
+  jmp $
+%endif
 
   ; Second pass to parse the instructions
   ; TODO: off by one with the line number when returning errors (but not in the tester)
@@ -437,7 +561,7 @@ skip_to_the_code:
 ;
 ; Returns:
 ;  - dl : Length of the identifier (note: nasm's max is 0x0FFF)
-;  - dh : 1 if it was a local label, 0 otherwise (TODO: should we just check the first char as the caller?)
+;  - dh : 1 if it was a local label, 0 otherwise
 ;  - bx : 0 if there was a valid ident, pointer to error otherwise
 ;  - cx : unchanged or the length of the error string
 parse_identifier:
@@ -580,6 +704,8 @@ search_jcc_instructions:
 ;  - [es:bx] : pointer to the extra data on match;
 ;              pointer to the place to insert alphabetically otherwise
 ;  - [ds:si] : advanced to one char past the end of the matched name
+;              or clobbered if no match was found
+; Saves dx (for the return value of parse_identifier mostly)
 search_data_table:
   push di ; save the output code location
   push dx
@@ -706,6 +832,51 @@ search_registers:
   .not_found:
   mov cx, -1
   .found:
+  ret
+
+; Args:
+;  - [es:bx] : the start of the buffer to shift forward
+;  - [es:di] : one past the end of the buffer to shift forward
+;  - cx      : number of bytes to leave space for at [es:bx]
+; Returns:
+;  - [es:di] : the new end pointer after the shift (di+cx from the args)
+; Saves dx and bx, clobbers cx
+shift_data:
+  ; TODO: deduplicate with .shift_gap in bootstrap-asm.asm (uses different registers)
+
+  push bx
+  ; Save the new end pointer for after we do the shift
+  mov ax, di
+  add ax, cx
+  push ax
+
+  mov ax, di
+  sub ax, bx ; ax = end - start = num chars
+  mov bx, cx ; bx = shift size
+  mov cx, ax ; cx = buffer length
+
+  ; We're copying 2 bytes at a time so we need to fix the alignment
+  ; (we know there's >= 2 chars because if it was only \0 or we'd be in the other branch)
+  sub di, 2 ; start on the char before the last so we can copy 2
+  test cx, 1
+  jz .shift_buffer ; if the number of chars is even, skip the extra byte
+  ; Copy the first byte when there's an odd number of characters
+  mov byte al, [es:di+1] ; +1 since we started on the second-to-last char
+  mov byte [es:bx+di+1], al
+  dec cx
+  jz .only_one_byte
+  dec di ; now on the third-to-last char (3 is the first odd length)
+  .shift_buffer:
+  mov word ax, [es:di]
+  mov word [es:bx+di], ax
+  sub di, 2
+  sub cx, 2
+  test cx, cx
+  jnz .shift_buffer
+
+  .only_one_byte:
+  pop di
+  pop bx
   ret
 
 write_imm:

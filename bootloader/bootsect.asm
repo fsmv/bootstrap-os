@@ -131,6 +131,23 @@ print_hex:
 
   ret
 
+; cl = byte to write at current cursor
+; clobbers ax, and bx
+print_hex_byte:
+  mov ah, 0x0E ; Scrolling teletype BIOS routine (used with int 0x10)
+  xor bx, bx ; Clear bx. bh = page, bl = color
+
+  ; Nibble 1
+  mov al, cl
+  shr al, 4
+  call _print_hex_char
+  ; Nibble 2
+  mov al, cl
+  and al, 0x0F
+  call _print_hex_char
+
+  ret
+
 ; === Bootsector data area ===
 
 error_msg: db `Error reading additional sectors from disk: `
