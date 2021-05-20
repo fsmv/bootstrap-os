@@ -11,6 +11,7 @@ assemble:
   cmp byte [ds:si], 0
   je no_code_error
 
+  ; TODO: support local labels
   ; TODO: db/dw and equ directives
   ; TODO: expression parser
 
@@ -20,17 +21,8 @@ assemble:
   ; TODO: support in/out with the al/ax first parameter
 
   ; TODO: first pass over each line: build the symbol table
-  ;  - save the line number the label is on (skipping comment only lines)
   ;  - save the current non-dot label somewhere so we can handle local labels
-  ;  - have a resolved/unresolved flag we can flip as we go and fill in values
-  ;  - just write the data right before the assembled code
   ;  - need to handle contextually using relative addresses instead of absolute
-  ;  - Build the symbol table like the instructions lists using insertion sort.
-  ;    - Then add a constant data size skip to the search function and reuse it.
-  ;      (and this function would return the pointer to the extra data)
-  ;    - Then we can even stick all the opcodes together next to the strings in
-  ;      one array (i.e. array of struct instead of struct of arrays)
-
 
   ; We're writing to symbol table to [es:di] before the code we output.
   ; Put in a 0 at the start so that we can call search_data_table on it.
@@ -157,7 +149,8 @@ _label_loop:
 
   ; fallthrough
 
-%if 1
+; DEBUG: print out the symbol table
+%if 0
   ; Directly print out the bytes of the symbol table (in case it's really bad)
   xor dx, dx
   mov si, [cs:.symbol_table_start]
@@ -259,9 +252,24 @@ _assemble_loop:
   ; This should have already been caught in _label_loop, but why not
   test bx, bx
   jnz .error_ret
-  inc si ; parse_identifier already skipped the name, now skip the ':'
-  ; TODO: put di in the symbol table for this label
 
+  ; TODO: handle local labels
+
+  xor dh, dh ; clear the flag for whether or not it was a local label
+  sub si, dx ; move back to the start of the label we parsed
+  mov bp, dx ; set the length argument for search_data_table
+  mov bx, [cs:_label_loop.symbol_table_start] ; set the search table pointer to the symbol table
+  mov cx, symbol_table.extra_data_size
+  call search_data_table
+
+  test cx, cx
+  jnz .internal_symbol_not_found_error
+
+  ; Save the resolved byte offset of the label and mark it done
+  mov [es:bx+symbol_table.location], di
+  mov byte [es:bx+symbol_table.is_resolved], 1
+
+  inc si ; skip the ':'
   ; Skip any whitespace or comments that might be after the label
   call skip_to_the_code
   test al, al
@@ -497,11 +505,14 @@ _assemble_loop:
   inc si
   jmp _assemble_loop
 
+.internal_symbol_not_found_error:
+  mov bx, internal_symbol_not_found_error_str
+  mov cx, internal_symbol_not_found_error_len
+  jmp .error_ret
 .instruction_not_found_error:
   mov bx, instruction_not_found_error_str
   mov cx, instruction_not_found_error_len
   ; fallthrough
-
   ; Used to forward an error (in bx, cx) from a subroutine
 .error_ret:
   pop dx ; return the line count in dx
@@ -969,6 +980,8 @@ IS_NO_ARG: equ 0x80
 ;  - bx : 0 if sucessful, pointer to error string if not
 ;  - cx : (opcode index) unchanged if sucessful, error string length if not
 parse_arguments:
+  ; TODO: need to pass through the unresolved symbol flag in the return so that
+  ; we can save the unresolved address locations on the stack in _assemble_loop
   .STACK_SIZE: equ 1+1+1+2+2+2 +1 ; out_flags, segment-prefix, modRM, immediate, displacement, cx +1 for word alignment
   .SIZE_DETERMINED: equ 0 ; just a boolean for if IS_16 cannot change anymore
   .OUT_FLAGS: equ 1
@@ -1636,8 +1649,6 @@ parse_mem_arg:
 ;  - bx : 0 if success, 1 if the expression is unresolved, pointer to error string otherwise
 ;  - cx : length of error string
 parse_expression:
-  ; TODO: check the symbol table
-
   cmp word [ds:si], '0x' ; note: because of the \0 we can compare one past the end
   je .hex_literal
 
@@ -1646,8 +1657,38 @@ parse_expression:
   cmp byte [ds:si], '"'
   je .char_literal
 
-  mov bx, not_implemented_error_str
-  mov cx, not_implemented_error_len
+  call parse_identifier
+  test bx, bx
+  jz .identifier
+  ret ; parse_identifier error
+
+.identifier:
+  ; TODO: handle local labels
+
+  xor dh, dh ; clear the flag for whether or not it was a local label
+  sub si, dx ; move back to the start of the label we parsed
+  mov bp, dx ; set the length argument for search_data_table
+  mov bx, [cs:_label_loop.symbol_table_start] ; set the search table pointer to the symbol table
+  mov cx, symbol_table.extra_data_size
+  call search_data_table
+  sub si, dx
+
+  test cx, cx
+  jnz .symbol_not_found_error
+
+  cmp byte [es:bx+symbol_table.is_resolved], 0
+  jne .resolved_ident
+  ; Unresolved ident
+  mov ax, si
+  mov bx, 1
+  ret
+  .resolved_ident:
+  mov ax, [es:bx+symbol_table.location]
+  mov bx, 0
+  ret
+  .symbol_not_found_error:
+  mov bx, symbol_not_found_error_str
+  mov cx, symbol_not_found_error_len
   ret
 
 .char_literal:
@@ -1792,5 +1833,11 @@ invalid_first_ident_char_error_len: equ $-invalid_first_ident_char_error_str
 
 duplicate_label_error_str: db 'Found a second definition of this label. Labels must be unique.'
 duplicate_label_error_len: equ $-duplicate_label_error_str
+
+internal_symbol_not_found_error_str: db "Internal error: label that we should be resolving was not in the symbol table even though we already parsed the labels."
+internal_symbol_not_found_error_len: equ $-internal_symbol_not_found_error_str
+
+symbol_not_found_error_str: db "Label not defined."
+symbol_not_found_error_len: equ $-symbol_not_found_error_str
 
 %include "assembler/data.asm"
