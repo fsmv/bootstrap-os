@@ -11,7 +11,9 @@ have to write your assembly on paper and hand-assemble it before typing it in
 carefully.
 
 Since you'd probably write a text editor and an assembler first thing, I think
-it makes sense to just start there. I'm currently working on exactly that.
+it makes sense to just start there. I'm
+[currently working on](https://github.com/fsmv/bootstrap-os/tree/assembler)
+exactly that.
 
 ## Compatibility
 
