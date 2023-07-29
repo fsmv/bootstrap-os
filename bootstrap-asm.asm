@@ -1151,6 +1151,7 @@ maybe_reset_gap:
   .shift_gap:
 
   ; Copy from si to si+GAP_SIZE in a loop in reverse order if there's space
+  ; stopping at bp
 
   ; We're copying 2 bytes at a time so we need to fix the alignment
   ; (we know there's >= 2 chars because if it was only \0 or we'd be in the other branch)

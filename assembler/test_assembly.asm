@@ -21,10 +21,10 @@ dec si
 dec di
 dec sp
 dec bp
-.test_local_label:
+test_local_label:
 
 ; All memory args
-mov bx, [si]
+mov bx, [si] ; TODO: broke this
 mov bx, [di]
 mov bx, [bp]
 mov bx, [bx]

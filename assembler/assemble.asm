@@ -10,6 +10,13 @@
 assemble:
   cmp byte [ds:si], 0
   je no_code_error
+  .STACK_SIZE: equ 2+2
+  .LINE_NUMBER: equ 0
+  .SYMBOL_TABLE: equ 2
+  ; Zero the locals and move sp
+  push 0
+  push 0
+  mov bp, sp
 
   ; TODO: support local labels
   ; TODO: db/dw and equ directives
@@ -27,20 +34,15 @@ assemble:
   ; We're writing to symbol table to [es:di] before the code we output.
   ; Put in a 0 at the start so that we can call search_data_table on it.
   mov byte [es:di], 0
-  mov [cs:_label_loop.symbol_table_start], di ; save the start of the symbol table
+  mov [bp+.SYMBOL_TABLE], di ; save the start of the symbol table
   inc di ; track the end of the symbol table in di
 
   push si ; save the start code position before we do the first pass
-  mov cx, 1 ; keep a line number count for error reporting
+  mov word [bp+.LINE_NUMBER], 1 ; keep a line number count for error reporting
 ; First pass over the code to build the symbol table
 _label_loop:
-  jmp .end_locals
-  .symbol_table_start: dw 0x0000 ; local var (initialized above)
-  .end_locals:
-
   cmp byte [ds:si], 0
   je .finish_label_loop
-  push cx ; save the line count so we can use cx
 
   call skip_to_the_code
   test al, al
@@ -68,13 +70,15 @@ _label_loop:
   ; Search the symbol table for the label we found in the code
   ;  - Finds the place to insert the new label in the sorted list
   ;  - If the label is already in the tabel it's a duplicate definition error
+  push bp
+  mov bx, [bp+assemble.SYMBOL_TABLE] ; set the search table pointer to the symbol table
+  mov bp, dx ; the length of the symbol we're searching for
   sub si, dx ; reset to the beginning of the identifier for search_data_table
   push si
-  mov bp, dx ; the length of the symbol we're searching for
-  mov bx, [cs:.symbol_table_start] ; set the search table pointer to the symbol table
   mov cx, symbol_table.extra_data_size
   call search_data_table
   pop si
+  pop bp
 
   test cx, cx
   jz .duplicate_label_error ; if we found a match
@@ -91,6 +95,7 @@ _label_loop:
   inc bx
 
   ; Write the label string
+  push bp
   xor bp, bp
   .write_label_loop:
   mov al, [ds:bp+si]
@@ -99,15 +104,15 @@ _label_loop:
   inc bx
   cmp bp, dx
   jne .write_label_loop
+  pop bp
 
   ; Now for the extra_data section
   ; Note: Make sure to update symbol_table.extra_data_size if this changes
 
   ; Write symbol_table.location = the line number (since it starts unresolved)
-  pop cx
+  mov cx, [bp+assemble.LINE_NUMBER]
   mov [es:bx], cx
   add bx, 2
-  push cx
 
   ; Write symbol_table.is_resolved = false
   mov byte [es:bx], 0
@@ -126,13 +131,12 @@ _label_loop:
   ; fallthrough
 ; Used to forward an error (in bx, cx) from a subroutine
 .error_ret:
-  pop dx ; return the line count in dx (it was in cx previously)
+  mov dx, [bp+assemble.LINE_NUMBER] ; return the line count in dx (it was in cx previously)
   pop si ; clear the pointer to the start of the code from the stack
   ret
 
 .next_line_or_done:
-  pop cx
-  inc cx ; count the line we just parsed
+  inc word [bp+assemble.LINE_NUMBER] ; count the line we just parsed
 
   cmp byte [ds:si], 0
   je .finish_label_loop
@@ -153,7 +157,7 @@ _label_loop:
 %if 0
   ; Directly print out the bytes of the symbol table (in case it's really bad)
   xor dx, dx
-  mov si, [cs:.symbol_table_start]
+  mov si, [bp+assemble.SYMBOL_TABLE]
   .raw_print_loop:
   cmp si, di
   je .raw_loop_done
@@ -186,7 +190,7 @@ _label_loop:
   xor dl, dl
 
   ; Print out the (parsed) symbol table we generated
-  mov di, [cs:.symbol_table_start]
+  mov di, [bp+assemble.SYMBOL_TABLE]
   mov bp, di ; BIOS print string wants [es:bp] so we'll use bp for the symbol table
 
   .print_symbol_table:
@@ -223,16 +227,22 @@ _label_loop:
   jmp .print_symbol_table
 
   .end_of_table:
-  jmp $
+  jmp $ ; Several registers are clobbered now
 %endif
 
   ; Second pass to parse the instructions
   ; TODO: off by one with the line number when returning errors (but not in the tester)
-  mov cx, 1 ; keep a line number count for error reporting
+  mov word [bp+assemble.LINE_NUMBER], 1 ; keep a line number count for error reporting
 _assemble_loop:
   cmp byte [ds:si], 0
   je done_assembling
-  push cx ; save the line count so we can use cx
+
+  ; Save the assemble base pointer because during _assemble_loop we need to use
+  ; bp for the parse_expression base pointer.
+  push bp
+  ; But also save the symbol table in bp, which is preserved until we call
+  ; parse_arguments, which uses this symbol table address as a parameter.
+  mov bp, [bp+assemble.SYMBOL_TABLE]
 
   call skip_to_the_code
   test al, al
@@ -255,12 +265,14 @@ _assemble_loop:
 
   ; TODO: handle local labels
 
+  push bp ; save the symbol table start
+  mov bx, bp ; set the search table pointer to the symbol table
+  mov bp, dx ; set the length argument for search_data_table
   xor dh, dh ; clear the flag for whether or not it was a local label
   sub si, dx ; move back to the start of the label we parsed
-  mov bp, dx ; set the length argument for search_data_table
-  mov bx, [cs:_label_loop.symbol_table_start] ; set the search table pointer to the symbol table
   mov cx, symbol_table.extra_data_size
   call search_data_table
+  pop bp
 
   test cx, cx
   jnz .internal_symbol_not_found_error
@@ -378,6 +390,7 @@ _assemble_loop:
   mov dx, [cs:bx+instructions.supported_args]
   mov cx, bx ; save the pointer to the extra data for after parse_arguments
 
+  ; TODO: somehow getting the wrong bytes output. Is the stack foobar'd?
   call parse_arguments
   test bx, bx
   jnz .error_ret
@@ -491,13 +504,15 @@ _assemble_loop:
   jmp .next_line_or_done
 
 .next_line_or_done:
-  pop cx ; restore the line count
+  pop bp ; restore the assemble base pointer
+  ; Note: the next iteration of _assemble_loop will push it again
 
 %ifdef TESTER_CALLBACK
+  mov cx, [bp+assemble.LINE_NUMBER]
   call test_assembled_instruction
 %endif
 
-  inc cx ; count the line we just parsed
+  inc word [bp+assemble.LINE_NUMBER] ; count the line we just parsed
 
   cmp byte [ds:si], 0
   je done_assembling
@@ -515,10 +530,13 @@ _assemble_loop:
   ; fallthrough
   ; Used to forward an error (in bx, cx) from a subroutine
 .error_ret:
-  pop dx ; return the line count in dx
+  pop bp ; restore the base pointer so we can get the line number
+  mov dx, [bp+assemble.LINE_NUMBER] ; return the line count in dx
+  add sp, assemble.STACK_SIZE ; pop the local variables
   ret
 
 done_assembling:
+  add sp, assemble.STACK_SIZE ; pop the local variables
   test di, di
   jz no_code_error
 
@@ -890,6 +908,8 @@ shift_data:
   pop bx
   ret
 
+; This function cannot call any additional functions or use the stack because it
+; relies on return values in the dead stack frame of parse_arguments
 write_imm:
   mov ax, [bp+parse_arguments.IMMEDIATE]
   ; x86 is little endian so write the low byte first
@@ -905,6 +925,9 @@ write_imm:
   ret
 
 ; Write the segment prefix to the output if we have one
+;
+; This function cannot call any additional functions or use the stack because it
+; relies on return values in the dead stack frame of parse_arguments
 maybe_write_segment_prefix:
   mov byte al, [bp+parse_arguments.SEGMENT_PREFIX]
   test al, al
@@ -918,6 +941,9 @@ maybe_write_segment_prefix:
 ;  - [bp]    : the output from parse_arguments
 ;  - cl      : the extra_opcode byte (will check if we need it inside)
 ;  - [es:di] : the location to write the modrm byte and optional displacement (gets incremented)
+;
+; This function cannot call any additional functions or use the stack because it
+; relies on return values in the dead stack frame of parse_arguments
 write_mem_reg:
   mov al, [bp+parse_arguments.MODRM] ; read the modRM byte
   ; Add the extra opcode into the modRM byte if we need to
@@ -974,6 +1000,7 @@ IS_NO_ARG: equ 0x80
 ;  - dx : the supported_args flags for this instruction (left unchanged)
 ;  - [ds:si] : the input code (which will be advanced by this function)
 ;  - [es:di] : the output pointer (we might write a segment prefix and advance)
+;  - bp : the address of the start of the symbol table
 ; Returns:
 ;  - bp : pointer on the stack to the args encoding in the order of:
 ;         modRM, immediate, displacement. Which are present depends on dx.
@@ -982,14 +1009,16 @@ IS_NO_ARG: equ 0x80
 parse_arguments:
   ; TODO: need to pass through the unresolved symbol flag in the return so that
   ; we can save the unresolved address locations on the stack in _assemble_loop
-  .STACK_SIZE: equ 1+1+1+2+2+2 +1 ; out_flags, segment-prefix, modRM, immediate, displacement, cx +1 for word alignment
+  .STACK_SIZE: equ 1+1+1+2+2+2+2 +1 ; out_flags, segment-prefix, modRM, immediate, displacement, symbol table, cx +1 for word alignment
   .SIZE_DETERMINED: equ 0 ; just a boolean for if IS_16 cannot change anymore
   .OUT_FLAGS: equ 1
   .SEGMENT_PREFIX: equ 2
   .MODRM: equ 3
   .IMMEDIATE: equ 4
   .DISPLACEMENT: equ 6
+  .INPUT_SYMBOL_TABLE: equ 8
   ; Zero the memory and move the stack pointer
+  push bp ; symbol table address
   push 0 ; displacement
   push 0 ; immediate
   push 0 ; modrm, segment_prefix
@@ -1059,14 +1088,20 @@ parse_arguments:
 
 ; TODO: if the mov segment flag is set, check for segment registers
 
+  push bp
+  mov bp, [bp+.INPUT_SYMBOL_TABLE]
   call parse_expression
+  pop bp
   cmp bx, 0
   je .one_imm
   ; TODO: check for unresolved expression when we have a symbol table
   jmp .error_ret
 
 .first_mem:
+  push bp
+  mov bp, [bp+.INPUT_SYMBOL_TABLE]
   call parse_mem_arg
+  pop bp
   test cx, cx ; check for errors
   jnz .invalid_memory_deref
   ; We can only have the first arg be a memory arg if we're one of these
@@ -1278,7 +1313,10 @@ parse_arguments:
 
   ; TODO: if the mov segment flag is set, check for segment registers
 
+  push bp
+  mov bp, [bp+.INPUT_SYMBOL_TABLE]
   call parse_expression
+  pop bp
   cmp bx, 0
   je .second_imm
   ; TODO: check for unresolved expression when we have a symbol table
@@ -1388,7 +1426,7 @@ parse_arguments:
 
 .done:
   ; bp is already the output we want
-  pop cx ; restore the line count
+  pop cx ; restore the instruction index
   xor bx, bx ; no error
   add sp, .STACK_SIZE-2
   ret
@@ -1418,13 +1456,20 @@ parse_arguments:
   add sp, .STACK_SIZE
   ret
 
+; Helper for parse_arguments to parse register-direct argument
+;
 ; Arguments
+;  - [ds:si] - the current source code pointer
+;  - bp : the base pointer from parse_arguments
 ;  - ax : (non-zero) if this is a second reg shift instruction, 0 otherwise
 ; Returns
 ;  - bx : 0 if successful, pointer to error string otherwise
 ;  - cx : error length, or -1 if no register was found or the register index (regardless of whether it's 16 bit)
 ;  - [bp+parse_arguments.OUT_FLAGS] : sets IS_16 if needed
 ;  - [bp+parse_arguments.SIZE_DETERMINED] : checked and set if it wasn't already
+;
+; Note: When we accept the base pointer from parse_arguments we are in a deeper
+; stack frame so it is safe to use the stack in this function.
 parse_reg_arg:
   push dx ; Save dx (instruction flags)
   mov dx, ax ; Use dx for the ax arg now (simplifies when we pop)
@@ -1504,13 +1549,15 @@ parse_reg_arg:
 
 ; Parse a memory addressing argument. Assumes you've already checked for '['.
 ;
+; Args
+;  - [ds:si] - the current source code pointer
+;  - bp : the address of the start of the symbol table
 ; Returns
 ;  - al : the segment prefix or 0 if there isn't one
 ;  - ah : the modRM byte
 ;  - bx : the displacement if there is any
 ;  - cx : 0 if success, 1 if error
 parse_mem_arg:
-  push bp ; save the parse_arguments pointer
   push dx ; save the instruction flags
   inc si ; skip the [
   cmp byte [ds:si], 0
@@ -1539,9 +1586,9 @@ parse_mem_arg:
   ; Search the list of valid memory derefrence operands
   mov cx, -1
   mov bx, mem_addressing-1
-  mov bp, si ; Save the beginning so we can reset
+  mov ax, si ; Save the beginning so we can reset
   .check_next_mem_string:
-  mov si, bp ; Reset to the beginning of the mem arg for the next element
+  mov si, ax ; Reset to the beginning of the mem arg for the next element
   inc bx ; skip to the next mem operand to check
   inc cx ; count the index for when we get a match
   cmp byte [cs:bx], 0
@@ -1577,7 +1624,7 @@ parse_mem_arg:
 
   .try_expression:
   mov dx, ax ; save the segment prefix and modrm output
-  call parse_expression
+  call parse_expression ; bp is already the symbol table
   cmp bx, 0 ; TODO: check for unresolved expression
   jne .error
 
@@ -1602,7 +1649,7 @@ parse_mem_arg:
   call skip_spaces
 
   mov dx, ax ; save the segment prefix and modrm output
-  call parse_expression
+  call parse_expression ; bp is already the symbol table
   cmp bx, 0
   jne .error ; TODO: support unresolved expressions
   mov bx, ax ; write the displacement output
@@ -1617,13 +1664,15 @@ parse_mem_arg:
   ; fallthrough
   .no_displacement:
 
-  ; [bp] must have 1 byte of 0 displacement because with no displacement
-  cmp cl, 6 ; [bp]
+  ; Special case for the argument [bp]: we must encode 0 displacement for this
+  ; because with no displacement this R/M field value is used for the absolute
+  ; address dereference argument.
+  cmp cl, 6 ; The R/M field value for [bp]
   jne .no_zero_displacement
-  test ah, 0xC0 ; first 2 bits, the mode field of the modRM byte
+  test ah, 0xC0 ; if the mode field is 0, then there was no displacement
   jnz .no_zero_displacement
-  ; if we're using [bp] and the first 2 bits are zero then we're in mem mode
-  or ah, MOD_MEM_DISP8 ; we need to write a 0 byte for displacement
+  ; Change the mode to displacement so we actually encode [bp+0]
+  or ah, MOD_MEM_DISP8
   .no_zero_displacement:
   ; fallthrough
 
@@ -1633,16 +1682,21 @@ parse_mem_arg:
   inc si ; skip the ]
 
   pop dx ; restore the instruction flags
-  pop bp ; restore the parse_arguments pointer
   xor cx, cx ; success
   ret
 
 .error:
   pop dx ; restore the instruction flags
-  pop bp ; restore the parse_arguments pointer
   mov cx, 1
   ret
 
+; Parse an expression, which produces an absolute address.
+;
+; Accepts: hex literals, char literals, and code-defined labels
+;
+; Args:
+;  - [ds:si] - the current source code pointer
+;  - bp : the address of the start of the symbol table
 ; Returns:
 ;  - ax : the 8 bit or 16 bit value,
 ;         or pointer in the input buffer to the unresolved expression
@@ -1667,8 +1721,8 @@ parse_expression:
 
   xor dh, dh ; clear the flag for whether or not it was a local label
   sub si, dx ; move back to the start of the label we parsed
+  mov bx, bp ; set the search table pointer to the symbol table
   mov bp, dx ; set the length argument for search_data_table
-  mov bx, [cs:_label_loop.symbol_table_start] ; set the search table pointer to the symbol table
   mov cx, symbol_table.extra_data_size
   call search_data_table
   sub si, dx

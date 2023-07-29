@@ -83,6 +83,7 @@ error:
   ; Print the line number label
   mov bp, line_num_str
   mov cx, line_num_str_len
+  ; TODO: Move the line number down if the string is longer than one line
   mov dx, 0x0100 ; second line
   mov bl, 0x07 ; black bg grey text
   int 0x10
@@ -107,6 +108,7 @@ save_output_code_start:
 ;  - [es:di] - one past the end of the newly assembled code
 ;  - cx      - the line number of the instruction
 test_assembled_instruction:
+  push bp
   ; Check if we wrote the same bytes as the host assembler
   mov bx, [cs:last_instruction_output]
   mov bp, bx
@@ -243,6 +245,7 @@ test_assembled_instruction:
 
   ; fallthrough
   .done:
+  pop bp
   mov [cs:last_instruction_input], si
   mov [cs:last_instruction_output], di
   ret
