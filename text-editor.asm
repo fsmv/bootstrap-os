@@ -1,6 +1,5 @@
 ; Provided under the MIT License: http://mit-license.org/
 ; Copyright (c) 2020 Andrew Kallmeyer <ask@ask.systems>
-%define SECTOR_SIZE 0x200 ; 512 in decimal
 
 ; Segment register value (so the actual start is at the address 0x10*this)
 ; This is the first sector after the editor's code
@@ -25,15 +24,14 @@
 %define ERROR_COLOR 0x47
 
 ; Note that the code requires that there's at least one character of border
-; We're in 80 cols by 25 rows mode or 0-4F and 0-18
-%define MAIN_TOP_LEFT 0x0102
-%define MAIN_BOTTOM_RIGHT 0x174D
-%define START_ROW 0x01
-%define START_COL 0x02
-%define END_ROW 0x17
-%define END_COL 0x4D
-%define ROW_LENGTH (END_COL-START_COL+1) ; 0x4C, 76
-%define NUM_PRINTS_PER_ROW (ROW_LENGTH/5) ; 5 is 4 hex chars + 1 space
+%define MAIN_TOP_LEFT 0x0204 ; row = 2,  col = 2
+%define MAIN_BOTTOM_RIGHT 0x164B ; row = 22, col = 79-2
+%define START_ROW 0x02
+%define START_COL 0x04
+%define END_ROW 0x16
+%define END_COL 0x4B
+%define ROW_LENGTH (END_COL-START_COL+1) ; 0x48, 72
+%define NUM_PRINTS_PER_ROW (ROW_LENGTH/5) ; 5 = 4 hex chars + 1 space
 
 ; Size of the gap buffer when we reset it
 ; Must be less than USER_CODE_MAX
@@ -41,138 +39,28 @@
 ; The user code is stored using a gap buffer to allow inserting at the cursor
 ; location without having to shift the trailing data in memory. The system
 ; maintains a single gap in the code buffer at the cursor position which shrinks
-; as the user types continuously and must periodically be reset by shifting the
+; as the usertypes continuously and must periodically be reset by shifting the
 ; data. When the user deletes the gap grows. When the cursor hits the end of the
 ; buffer the gap can be reset for free.
 %define GAP_SIZE (8*ROW_LENGTH)
 
-%include "util/bootsect-header.asm"
-
-mov [BOOT_DISK], dl ; Save the boot disk number
-
-; Set video mode, 16 color 80x25 chars
+; Optionally change the keyboard layout.
 ;
-; The IBM BIOS manual describes a long procedure for determining which video
-; modes are supported and all the possible options for supporting both mono and
-; color. Sometimes mono isn't supported if the PC supports color modes. So, I'm
-; just going to assume all hardware this is used on supports color modes.
-mov ax, 0x0003
-int 0x10
+; To use a layout: look in the file you want for the %ifdef label and -D define
+; it on the commandline. Ex: ./boot bootstrap-asm.asm -DDVORAK
+;
+; It's easy to make a new layout!
+;
+; Simply pull up an ascii table (my favorite is `man ascii`) then type it out
+; starting from ' ' to '~' using your qwerty keyboard labels using the desired
+; layout in your OS (note: both \ and ` must be escaped for the assembler)
+%include "keyboard-layouts/dvorak.asm"
+; TODO: is the default layout qwerty or hardware specific? My map is qwerty->dvorak only
 
-; Make the 8th bit of the colors bg-intensity instead of blink
-mov ax, 0x1003
-mov bl, 0
-int 0x10
+no_more_room_msg: db `No more room in the code buffer`
+no_more_room_msg_len: equ $-no_more_room_msg
 
-; Make the 4th bit of the colors fg-intensity instead of font selection
-; Use block 0 for the font
-; Apparently this is the default in VGA so maybe we don't need it
-mov ax, 0x1103
-mov bl, 0
-int 0x10
-
-; Color byte is now: bg-intensity,bg-r,bg-g,bg-b ; fg-intensity,fg-r,fg-g,fg-b
-
-; Set cursor type to an underline
-mov ax, 0x0100
-mov cx, 0x0607
-int 0x10
-
-; Set the border color (by clearing the whole screen)
-mov ax, 0x0600
-xor cx, cx   ; row = 0,  col = 0
-mov dx, 0x184F ; row = 24, col = 79
-mov bh, BORDER_COLOR
-int 0x10
-
-; Set the background color (by clearing just the middle)
-;mov ax, 0x0600
-mov cx, MAIN_TOP_LEFT
-mov dx, MAIN_BOTTOM_RIGHT
-mov bh, MAIN_COLOR
-int 0x10
-
-; Set the keyboard repeat speed
-mov ax, 0x0305
-;mov bx, 0x0107 ; 500 ms delay before repeat ; 16 characters per second
-mov bx, 0x0100 ; 500 ms delay before repeat ; 30 characters per second
-int 0x16
-
-; Load the code from the extra sectors
-mov ah, 0x02
-mov al, NUM_EXTRA_SECTORS
-mov bx, SECTOR_SIZE ; es:bx is address to write to. es = cs, so write directly after the boot sector
-mov cx, 0x0002 ; Cylinder 0; Sector 2 (1 is the boot sector)
-mov dl, [BOOT_DISK]
-xor dh, dh ; Head 0
-int 0x13
-
-; Check for errors
-cmp ax, NUM_EXTRA_SECTORS
-je start_
-
-push ax ; push the error code
-
-; Print the error message
-mov ax, 0x1301 ; Write String, move cursor mode in al
-mov bp, error_msg ; String pointer in es:bp (es is at code start from bootsect-header.asm)
-mov cx, error_msg_len ; String length
-mov dx, MAIN_TOP_LEFT
-mov bx, MAIN_COLOR ; bh = 0 (page number); bl = color
-int 0x10
-
-pop cx ; pop the error code
-call print_hex ; print the error code
-
-jmp $ ; stop forever
-
-; Prints the ascii hex character which represents the integer value of al
-; Only accepts 0x0 <= al <= 0xF, anything else is garbage output
-; e.g. al = 12 prints "C"
-; clobbers ax, and bx
-print_hex_char:
-  mov ah, 0x0E
-  xor bx, bx
-  ; fallthrough
-; Also assumes ah = 0x0E and bx = 0
-_print_hex_char:
-  cmp al, 9
-  ja .over_9
-
-  add al, '0'
-  int 0x10
-  ret
-
-.over_9:
-  sub al, 10
-  add al, 'A'
-  int 0x10
-  ret
-
-; cx = two bytes to write at current cursor
-; clobbers ax, and bx
-print_hex:
-  mov ah, 0x0E ; Scrolling teletype BIOS routine (used with int 0x10)
-  xor bx, bx ; Clear bx. bh = page, bl = color
-
-  ; Nibble 0 (most significant)
-  mov al, ch
-  shr al, 4
-  call _print_hex_char
-  ; Nibble 1
-  mov al, ch
-  and al, 0x0F
-  call _print_hex_char
-  ; Nibble 2
-  mov al, cl
-  shr al, 4
-  call _print_hex_char
-  ; Nibble 3
-  mov al, cl
-  and al, 0x0F
-  call _print_hex_char
-
-  ret
+num_debug_prints: db 0x00
 
 ; Prints a hex word in the top margin for debugging purposes
 ; Supports printing as many as will fit in before it runs into the text area
@@ -229,37 +117,21 @@ debug_print_hex:
 
   ret
 
-; === Bootsector data area ===
-
-error_msg: db `Error reading additional sectors from disk: `
-error_msg_len: equ $-error_msg
-
-num_debug_prints: db 0x00
-
-BOOT_DISK: db 0x00 ; value is filled first thing
-
-%include "util/bootsect-footer.asm"
-; This is the start for calculating NUM_EXTRTA_SECTORS
-; There must be nothing other than the bootsector above this label
-extra_sectors_start:
-
-; Optionally change the keyboard layout.
-;
-; To use a layout: look in the file you want for the %ifdef label and -D define
-; it on the commandline. Ex: ./boot bootstrap-asm.asm -DDVORAK
-;
-; It's easy to make a new layout!
-;
-; Simply pull up an ascii table (my favorite is `man ascii`) then type it out
-; starting from ' ' to '~' using your qwerty keyboard labels using the desired
-; layout in your OS (note: both \ and ` must be escaped for the assembler)
-%include "keyboard-layouts/dvorak.asm"
-; TODO: is the default layout qwerty or hardware specific? My map is qwerty->dvorak only
-
-no_more_room_msg: db `No more room in the code buffer`
-no_more_room_msg_len: equ $-no_more_room_msg
-
 start_:
+
+; Set the border color (by clearing the whole screen)
+mov ax, 0x0600
+xor cx, cx   ; row = 0,  col = 0
+mov dx, 0x184F ; row = 24, col = 79
+mov bh, BORDER_COLOR
+int 0x10
+
+; Set the background color (by clearing just the middle)
+;mov ax, 0x0600
+mov cx, MAIN_TOP_LEFT
+mov dx, MAIN_BOTTOM_RIGHT
+mov bh, MAIN_COLOR
+int 0x10
 
 ; Set cursor position to the start
 mov ax, 0x0200
@@ -317,7 +189,87 @@ typing_loop:
   cmp ax, RIGHT_ARROW
   je move_right
 
+  cmp ax, EOT ; Ctrl+D
+  je prepare_and_run_code
+
   jmp typing_loop ; Doesn't match anything above
+
+%ifndef RUN_CODE
+run_code:
+  mov byte [es:di], "!"
+  ret
+%endif
+
+prepare_and_run_code:
+  call clear_error ; In case this isn't the first try
+
+  ; Close the gap so we have a contiguous buffer
+  .close_gap:
+  mov byte al, [es:si]
+  mov byte [es:di], al
+  ; Check for \0 after moving because we want to copy it over
+  cmp byte [es:si], 0
+  je .gap_closed
+  inc di
+  inc si
+  jmp .close_gap
+  .gap_closed:
+
+  ; Clear the text from the screen
+  mov dx, MAIN_TOP_LEFT
+  mov bl, END_COL-START_COL
+  call scroll_text
+  ; Set the cursor position to the start of the text area
+  mov ah, 0x02
+  xor bh, bh
+  int 0x10
+
+  ; set the source [ds:si] for the assembler
+  mov ax, es
+  mov ds, ax
+  xor si, si
+  ; Set the destination [es:di] for the assembler output (right after the code text)
+  mov ax, es
+  shr di, 4 ; segment registers are address/0x10
+  add ax, di
+  inc ax ; +1 since the shift rounds down and we don't want to overlap
+  mov es, ax
+  xor di, di
+  push ax ; save es
+  call run_code
+
+  ; Reset [es:di] to the beginning of the output address
+  pop ax
+  mov es, ax
+  xor di, di
+  xor si, si
+
+  ; Print the output
+  xor cx, cx
+.print_loop:
+  cmp cx, 0
+  je .no_scroll
+  mov al, 0
+  mov bl, 1
+  mov dx, MAIN_TOP_LEFT
+  call scroll_text
+  .no_scroll:
+
+  add si, cx
+  mov dh, END_ROW
+  mov dl, START_COL
+  call _repaint_bottom_line
+  push cx ; number of chars printed by repaint_bottom_line
+
+  pop cx
+  cmp cx, 0
+  jne .print_loop
+
+  ; Read keyboard, so they can read it
+  mov ah, 0x00
+  int 0x16
+
+  jmp start_
 
 ; ==== typing_loop internal helpers that continue the loop ====
 
@@ -458,6 +410,7 @@ save_new_line:
   ; Move the text one line up to make an empty line at the bottom
   mov dh, START_ROW ; scroll the whole screen
   mov al, 0
+  mov bl, 1 ; scroll one line
   call scroll_text
   mov dh, END_ROW ; restore the cursor row
   jmp .print_new_line
@@ -468,6 +421,7 @@ save_new_line:
   cmp byte [es:bx+si], 0 ; if this is the last line, we already have space
   je .no_scroll
   mov al, 1 ; shift the text down to leave a space
+  mov bl, 1 ; scroll one line
   call scroll_text
   .no_scroll:
   ; fallthrough
@@ -494,25 +448,8 @@ backspace:
   lea bx, [si-1]
   cmp di, bx ; disallow typing anywhere when we're out of buffer space
   jne .not_full_buffer
-  ; Clear the buffer full warning if it was full because we're deleting one
-  push dx
-
-  ; Move the screen cursor to the message start
-  mov dx, MAIN_TOP_LEFT-0x0100 ; one row above the top left
-  mov ah, 0x02
-  xor bh, bh
-  int 0x10
-
-  ; Write spaces to clear the message
-  ; Note: this call uses the actual set cursor position not dx
-  mov ah, 0x09
-  mov al, ' '
-  xor bh, bh
-  mov bl, BORDER_COLOR
-  mov cx, no_more_room_msg_len
-  int 0x10
-
-  pop dx
+  call clear_error
+  ; fallthrough
   .not_full_buffer:
 
   cmp byte [es:di-1], `\n` ; check the char we just "deleted" (di-1 is usually the char before the cursor)
@@ -586,17 +523,7 @@ backspace:
 
   jmp set_cursor_and_continue
 
-_join_lines:
-  dec di ; delete the char by pushing it into the gap
-
-  ; Scroll the text below up (which clears the current line & markers for free)
-  mov al, 0 ; shift the text up to cover the current line
-  call scroll_text
-
-  dec dh ; Move the cursor onto the prev line (must be after scrolling)
-
-  ; We might be bringing a line up from the bottom of the screen
-.repaint_bottom_row:
+_repaint_bottom_line:
   push dx
   ; Note: the first iteration will just be the tail of the new joined line
   mov bp, si
@@ -617,11 +544,39 @@ _join_lines:
 
   jmp .next_line_loop
   .at_last_line:
+
+  ; Set the right scroll marker
+  mov ax, 0x0000 ; set to off ; right margin
+  cmp cx, ROW_LENGTH
+  jbe .right_off
+  mov cx, ROW_LENGTH ; also clip the length for printing (reuse the cmp)
+  mov ax, 0x0100 ; set to on ; right margin
+  .right_off:
+  call set_line_scroll_marker
+
+  push cx
   call print_line ; if we hit the end row, paint the new last screen line
-  ; fallthrough
-  .no_line_to_print:
+  pop cx
   pop dx
-  ; fallthrough
+  ret
+
+  .no_line_to_print:
+  xor cx, cx
+  pop dx
+  ret
+
+_join_lines:
+  dec di ; delete the char by pushing it into the gap
+
+  ; Scroll the text below up (which clears the current line & markers for free)
+  mov al, 0 ; shift the text up to cover the current line
+  mov bl, 1 ; scroll one line
+  call scroll_text
+
+  dec dh ; Move the cursor onto the prev line (must be after scrolling)
+
+; We might be bringing a line up from the bottom of the screen
+  call _repaint_bottom_line
 
 .paint_joined_line:
   ; Need to skip scan_backward if we're at di == 0 because we can't check di-1
@@ -756,6 +711,7 @@ _prev_line:
   jne .no_screen_scroll
   ; We have to make room for the previous line
   mov al, 1
+  mov bl, 1
   call scroll_text
   jmp .paint_row
   .no_screen_scroll:
@@ -922,6 +878,7 @@ _next_line:
 .scroll_up:
   mov dh, START_ROW ; scroll the whole screen
   mov al, 0
+  mov bl, 1
   call scroll_text
   mov dh, END_ROW ; restore the cursor row
 
@@ -950,7 +907,7 @@ convert_keyboard_layout:
   xor bh, bh
   mov bl, al
   sub bl, ' '
-  mov al, [bx + keyboard_map]
+  mov al, [cs:bx + keyboard_map]
   ret
 %endif
 
@@ -960,6 +917,7 @@ convert_keyboard_layout:
 ;
 ; Args:
 ;   al : 0 for up, non-zero for down
+;   bl : number of rows to scroll
 scroll_text:
   push dx ; cursor position
   push cx
@@ -973,16 +931,15 @@ scroll_text:
   .up:
 
   mov ch, dh ; start at the cursor row for all 3 (and go until the bottom)
+  mov al, bl ; set the number of rows to scroll
 
   ; Scroll the user code text area
-  mov al, 1 ; scroll one line
   mov cl, START_COL
   mov dx, MAIN_BOTTOM_RIGHT
   mov bh, MAIN_COLOR ; Also clear bh because it's the page number for write string below
   int 0x10
 
   ; Scroll the left side scroll markers (even if there's nothing there)
-  mov al, 1 ; scroll one line
   mov cl, START_COL - 1 ; left one column from the upper left corner (columns are the low bits, so we can save an instruction)
   mov dh, END_ROW
   mov dl, START_COL-1
@@ -992,7 +949,6 @@ scroll_text:
   ; Scroll the right side scroll markers
   ; Note: I reset some registers to the value they should still have
   ;       just in case the BIOS clobbers them
-  mov al, 1 ; scroll one line
   mov cl, END_COL+1
   mov dh, END_ROW
   mov dl, END_COL+1
@@ -1181,6 +1137,7 @@ maybe_reset_gap:
   .shift_gap:
 
   ; Copy from si to si+GAP_SIZE in a loop in reverse order if there's space
+  ; stopping at bp
 
   ; We're copying 2 bytes at a time so we need to fix the alignment
   ; (we know there's >= 2 chars because if it was only \0 or we'd be in the other branch)
@@ -1208,29 +1165,58 @@ maybe_reset_gap:
 
 .no_more_room:
   ; Print a warning message because we can't allow more typing now
+  mov bp, no_more_room_msg
+  mov cx, no_more_room_msg_len
+  call print_error
+  ; fallthrough
+  .done:
+  ret
+
+; Print an error message at the top of the screen
+;
+; Args:
+;  - [cs:bp] : pointer to the message (this call manages the segment registers)
+;  - cx : number of chars to print
+print_error:
   push dx
-  ; The interrupt reads from es:bp and we need to read the error from the code
+
+  ; set es to cs since the interrupt reads from [es:bp]
   mov ax, cs
   mov es, ax
 
-  mov bp, no_more_room_msg
-  mov cx, no_more_room_msg_len
   mov dx, MAIN_TOP_LEFT-0x0100 ; one line above the top left corner
   xor bh, bh ; page number 0
   mov bl, ERROR_COLOR
   mov ax, 0x1301 ; write string without moving the cursor
   int 0x10
 
-  ; Reset es and the cursor position
+  ; reset the es segment
   mov ax, USER_CODE_LOC
   mov es, ax
+
   pop dx
-  ; fallthrough
-  .done:
   ret
 
-; The -1 is because we don't want the next sector until we have 512+1 bytes
-; e.g. for exactly 512 bytes we want 1 extra sector not 2
-;
-; The +1 is because int division does floor() and we want ceil()
-NUM_EXTRA_SECTORS: equ ($-extra_sectors_start-1)/SECTOR_SIZE + 1
+; Clears any error message (or anything else) right above the text.
+; No args. Does not reset the cursor to the dx location at the end.
+clear_error:
+  ; Clear the buffer full warning if it was full because we're deleting one
+  push dx
+
+  ; Move the screen cursor to the message start
+  mov dx, MAIN_TOP_LEFT-0x0100 ; one row above the top left
+  mov ah, 0x02
+  xor bh, bh
+  int 0x10
+
+  ; Write spaces to clear the message
+  ; Note: this call uses the actual set cursor position not dx
+  mov ah, 0x09
+  mov al, ' '
+  xor bh, bh
+  mov bl, BORDER_COLOR
+  mov cx, ROW_LENGTH
+  int 0x10
+
+  pop dx
+  ret

@@ -79,6 +79,10 @@ for a while.
     2. Choose either the user or system-wide Path variable and add both `C:\Program Files\NASM` & `C:\Program Files\qemu`
  4. `boot.bat bootstrap-hex.asm` (alternatively you can use the bash script in the git bash prompt)
 
+# TODO: version is too old or something, it doesn't support -ix
+If you want to use the debug shell script in the MinGW git bash prompt you can
+install gdb for it with this installer: https://sourceforge.net/projects/mingw/files/MinGW/Extension/gdb/Release%20Candidate_%20gdb-6.3/gdb-6.3-2.exe/download
+
 ## Reference Manuals
 
 This project depends on the

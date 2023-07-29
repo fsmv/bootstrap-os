@@ -1,2 +1,3 @@
 bin/
 reference_manuals/*.pdf
+gdbconf/

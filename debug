@@ -1,0 +1,65 @@
+#!/bin/bash
+# Thanks to https://stackoverflow.com/a/65442462 and https://stackoverflow.com/a/32960272
+
+if [ "$#" -eq 0 ]; then
+    printf "Usage: $0 [filename] [any other nasm args].\nEx: $0 bootstrap-asm.asm -DDVORAK"
+
+    printf "\n\nThe debugger will automatically break at the start of the code after"
+    printf "\nthe bootloader. Unfortunately I couldn't get debug symbols to work, so"
+    printf "\nyou'll have to manually compare the disassembly with the source code."
+
+    printf "\n\nWhen you set breakpoints use the addresses listed in the disassembly"
+    printf "\noutput. e.g. \`b *0x7E00\`. If you just type \`b\` it won't put the"
+    printf "\nbreakpoint on the right address because it won't include the cs register"
+    printf "\nvalue. To break on the current address use \`b *\$rip\`. You can also"
+    printf "\nstep through and look at jump/call addresses in the disassembly to find"
+    printf "\nthe addresses of your labels to set breakpoints on.\n"
+    exit 1
+fi
+
+# This is a fix to make qemu not force the gdb architecture back to 32 bit x86
+mkdir -p gdbconf
+if ! stat gdbconf/i386-32bit.xml >/dev/null 2>&1; then
+  echo "Setting up a patch to fix the disassembly..."
+  echo '<?xml version="1.0"?><!DOCTYPE target SYSTEM "gdb-target.dtd"><target><architecture>i8086</architecture><xi:include href="i386-32bit.xml"/></target>' > gdbconf/target.xml
+  wget -nc https://raw.githubusercontent.com/qemu/qemu/master/gdb-xml/i386-32bit.xml -O gdbconf/i386-32bit.xml
+fi
+
+# This is a nice config that provides the automatic disassembly and memory
+# printing and several nice functions
+GDB_REAL_CONF=gdbconf/gdbinit_real_mode.txt
+if ! stat $GDB_REAL_CONF >/dev/null 2>&1; then
+  echo "Downloading a gdb config to make this nicer... (provides auto disassembly, functions: stepo, find_in_mem, etc)"
+  wget -nc https://raw.githubusercontent.com/mhugo/gdb_init_real_mode/843e3b530971aeed9cfa1d12f585132e0d651c15/gdbinit_real_mode.txt -O $GDB_REAL_CONF
+  # Patch in using the above work-around
+  sed -i '/set architecture i8086/a\
+    set tdesc filename gdbconf/target.xml' $GDB_REAL_CONF
+  # Fix the stepo address, not sure why this is wasn't right already...
+  sed -i 's/set $_nextaddress = $eip + $offset + $noffset/set $_nextaddress = $rip + $offset + $noffset/' $GDB_REAL_CONF
+  # Also tbreak isn't working for us so we have to clear it in stepo
+  sed -i '/# else we just single step/i\
+    clear *$_nextaddress' $GDB_REAL_CONF
+fi
+
+file=$1
+name="${file%%.*}"
+
+binfile="bin/$name.bin"
+elffile="bin/$name.elf"
+ofile="bin/$name.o"
+mkdir -p `dirname $binfile`
+
+if ! nasm $file -f bin -o $binfile "${@:2}"; then
+  exit $?
+fi
+
+if ! which qemu-system-i386 > /dev/null; then
+  printf "\nYou need to install qemu-arch-extra to use the debugger\n"
+  exit 127
+fi
+
+qemu-system-i386 -s -S -drive file=$binfile,format=raw,if=ide &
+
+gdb -ix $GDB_REAL_CONF \
+  -ex 'target remote localhost:1234' \
+  -ex 'b *0x7E00' -ex 'c' # break at the start of the code after the bootloader
