@@ -26,6 +26,7 @@ assemble:
   ; TODO: support FAR_JUMP
   ; TODO: support mov segment registers
   ; TODO: support in/out with the al/ax first parameter
+  ; TODO: support instruction prefixes LOCK, REP, REPE, REPZ, REPNE, REPNZ
 
   ; TODO: first pass over each line: build the symbol table
   ;  - save the current non-dot label somewhere so we can handle local labels
