@@ -196,7 +196,8 @@ typing_loop:
 
 %ifndef RUN_CODE
 run_code:
-  jmp $
+  mov byte [es:di], "!"
+  ret
 %endif
 
 prepare_and_run_code:
@@ -234,7 +235,41 @@ prepare_and_run_code:
   inc ax ; +1 since the shift rounds down and we don't want to overlap
   mov es, ax
   xor di, di
+  push ax ; save es
   call run_code
+
+  ; Reset [es:di] to the beginning of the output address
+  pop ax
+  mov es, ax
+  xor di, di
+  xor si, si
+
+  ; Print the output
+  xor cx, cx
+.print_loop:
+  cmp cx, 0
+  je .no_scroll
+  mov al, 0
+  mov bl, 1
+  mov dx, MAIN_TOP_LEFT
+  call scroll_text
+  .no_scroll:
+
+  add si, cx
+  mov dh, END_ROW
+  mov dl, START_COL
+  call _repaint_bottom_line
+  push cx ; number of chars printed by repaint_bottom_line
+
+  pop cx
+  cmp cx, 0
+  jne .print_loop
+
+  ; Read keyboard, so they can read it
+  mov ah, 0x00
+  int 0x16
+
+  jmp start_
 
 ; ==== typing_loop internal helpers that continue the loop ====
 
@@ -488,18 +523,7 @@ backspace:
 
   jmp set_cursor_and_continue
 
-_join_lines:
-  dec di ; delete the char by pushing it into the gap
-
-  ; Scroll the text below up (which clears the current line & markers for free)
-  mov al, 0 ; shift the text up to cover the current line
-  mov bl, 1 ; scroll one line
-  call scroll_text
-
-  dec dh ; Move the cursor onto the prev line (must be after scrolling)
-
-  ; We might be bringing a line up from the bottom of the screen
-.repaint_bottom_row:
+_repaint_bottom_line:
   push dx
   ; Note: the first iteration will just be the tail of the new joined line
   mov bp, si
@@ -520,11 +544,39 @@ _join_lines:
 
   jmp .next_line_loop
   .at_last_line:
+
+  ; Set the right scroll marker
+  mov ax, 0x0000 ; set to off ; right margin
+  cmp cx, ROW_LENGTH
+  jbe .right_off
+  mov cx, ROW_LENGTH ; also clip the length for printing (reuse the cmp)
+  mov ax, 0x0100 ; set to on ; right margin
+  .right_off:
+  call set_line_scroll_marker
+
+  push cx
   call print_line ; if we hit the end row, paint the new last screen line
-  ; fallthrough
-  .no_line_to_print:
+  pop cx
   pop dx
-  ; fallthrough
+  ret
+
+  .no_line_to_print:
+  xor cx, cx
+  pop dx
+  ret
+
+_join_lines:
+  dec di ; delete the char by pushing it into the gap
+
+  ; Scroll the text below up (which clears the current line & markers for free)
+  mov al, 0 ; shift the text up to cover the current line
+  mov bl, 1 ; scroll one line
+  call scroll_text
+
+  dec dh ; Move the cursor onto the prev line (must be after scrolling)
+
+; We might be bringing a line up from the bottom of the screen
+  call _repaint_bottom_line
 
 .paint_joined_line:
   ; Need to skip scan_backward if we're at di == 0 because we can't check di-1
@@ -855,7 +907,7 @@ convert_keyboard_layout:
   xor bh, bh
   mov bl, al
   sub bl, ' '
-  mov al, [bx + keyboard_map]
+  mov al, [cs:bx + keyboard_map]
   ret
 %endif
 
