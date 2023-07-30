@@ -255,13 +255,50 @@ prepare_and_run_code:
   call scroll_text
   .no_scroll:
 
+
+  mov bp, si
+  call scan_forward
+
+  ; Check if we found the end of the line, and set the right scroll marker
+  mov ax, 0x0000 ; scroll markers: set to off ; right margin
+  cmp cx, ROW_LENGTH
+  jbe .found_end
+
+  ; Move si forward to the start of the next line
+  push bp
+  .next_line_loop:
+  call scan_forward
+  cmp cx, ROW_LENGTH
+  jbe .found_next_line
+  add si, ROW_LENGTH
+  add bp, ROW_LENGTH
+  jmp .next_line_loop
+  .found_next_line:
   add si, cx
+  cmp byte [cs:bp], 0
+  je .end_of_file
+  inc si ; skip the \n
+  .end_of_file:
+  pop bp
+
+  mov cx, ROW_LENGTH ; only print up to the edge of the screen
+  mov ax, 0x0100 ; scroll markers: set to on ; right margin
+  jmp .set_marker
+
+  .found_end:
+  ; move si to the end of the next line
+  add si, cx
+  cmp byte [es:si], 0
+  je .set_marker
+  inc si ; skip the \n
+  ; fallthrough
+  .set_marker:
+  call set_line_scroll_marker
+
   mov dh, END_ROW
   mov dl, START_COL
-  call _repaint_bottom_line
-  push cx ; number of chars printed by repaint_bottom_line
+  call print_line
 
-  pop cx
   cmp cx, 0
   jne .print_loop
 
@@ -523,6 +560,7 @@ backspace:
 
   jmp set_cursor_and_continue
 
+; TODO: I think the cx return isn't used anymore and this can be made private
 _repaint_bottom_line:
   push dx
   ; Note: the first iteration will just be the tail of the new joined line
