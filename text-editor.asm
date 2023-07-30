@@ -302,7 +302,7 @@ prepare_and_run_code:
   cmp cx, 0
   jne .print_loop
 
-  ; Read keyboard, so they can read it
+  ; Read keyboard, so they can read the output
   mov ah, 0x00
   int 0x16
 
