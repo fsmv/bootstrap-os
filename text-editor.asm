@@ -44,6 +44,52 @@
 ; buffer the gap can be reset for free.
 %define GAP_SIZE (8*ROW_LENGTH)
 
+; start_ should be the first bytes in the file because that's where I have
+; configured gdb to breakpoint
+start_:
+
+; Set the border color (by clearing the whole screen)
+mov ax, 0x0600
+xor cx, cx   ; row = 0,  col = 0
+mov dx, 0x184F ; row = 24, col = 79
+mov bh, BORDER_COLOR
+int 0x10
+
+; Set the background color (by clearing just the middle)
+;mov ax, 0x0600
+mov cx, MAIN_TOP_LEFT
+mov dx, MAIN_BOTTOM_RIGHT
+mov bh, MAIN_COLOR
+int 0x10
+
+; Set cursor position to the start
+mov ax, 0x0200
+mov dx, MAIN_TOP_LEFT
+xor bh, bh ; page 0
+int 0x10
+
+; --- typing_loop global register variables ---
+;
+; The user code is an (almost) contiguous null-terminated buffer starting at
+; es:0 with a single gap of garbage data in it (which lets us do inserts without
+; shifting the tail of the data every time to make space).
+;
+; dx      - cursor position (set above)
+; [es:di] - the first garbage character in the gap (current position to write to)
+; [es:si] - the first code character after the gap
+;
+; Note: We must have at least one char of gap i.e. si-di >= 1 at all times
+;       (because we use it as scratch space when printing sometimes)
+;
+; Additonally cx,bp are callee save while ax,bx are caller save (clobbered)
+mov ax, USER_CODE_LOC
+mov es, ax
+xor di, di
+mov si, GAP_SIZE
+mov byte [es:si], 0 ; null-terminate the string
+
+jmp typing_loop
+
 ; Optionally change the keyboard layout.
 ;
 ; To use a layout: look in the file you want for the %ifdef label and -D define
@@ -117,47 +163,6 @@ debug_print_hex:
 
   ret
 
-start_:
-
-; Set the border color (by clearing the whole screen)
-mov ax, 0x0600
-xor cx, cx   ; row = 0,  col = 0
-mov dx, 0x184F ; row = 24, col = 79
-mov bh, BORDER_COLOR
-int 0x10
-
-; Set the background color (by clearing just the middle)
-;mov ax, 0x0600
-mov cx, MAIN_TOP_LEFT
-mov dx, MAIN_BOTTOM_RIGHT
-mov bh, MAIN_COLOR
-int 0x10
-
-; Set cursor position to the start
-mov ax, 0x0200
-mov dx, MAIN_TOP_LEFT
-xor bh, bh ; page 0
-int 0x10
-
-; --- typing_loop global register variables ---
-;
-; The user code is an (almost) contiguous null-terminated buffer starting at
-; es:0 with a single gap of garbage data in it (which lets us do inserts without
-; shifting the tail of the data every time to make space).
-;
-; dx      - cursor position (set above)
-; [es:di] - the first garbage character in the gap (current position to write to)
-; [es:si] - the first code character after the gap
-;
-; Note: We must have at least one char of gap i.e. si-di >= 1 at all times
-;       (because we use it as scratch space when printing sometimes)
-;
-; Additonally cx,bp are callee save while ax,bx are caller save (clobbered)
-mov ax, USER_CODE_LOC
-mov es, ax
-xor di, di
-mov si, GAP_SIZE
-mov byte [es:si], 0 ; null-terminate the string
 
 ; Note: all of the jumps in typing_loop loop back here (except for run_code)
 ;
@@ -235,14 +240,9 @@ prepare_and_run_code:
   inc ax ; +1 since the shift rounds down and we don't want to overlap
   mov es, ax
   xor di, di
-  push ax ; save es
   call run_code
-
-  ; Reset [es:di] to the beginning of the output address
-  pop ax
-  mov es, ax
-  xor di, di
-  xor si, si
+  ; [es:di] is the output now
+  mov si, di ; set es:si to the same as es:di so the gap buffer code works
 
   ; Print the output
   xor cx, cx

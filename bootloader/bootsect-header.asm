@@ -8,6 +8,16 @@
 ; A lot of this came from https://wiki.osdev.org/Problems_Booting_From_USB_Flash
 
 %define CODE_SEGMENT 0x7C0 ; This is where the BIOS always loads the code
+; The last segment in the unmapped memary block after 0x7C0 that can be used
+; with the full 16bit address range (0x7FFFF is the last safe address)
+;
+; See: https://wiki.osdev.org/Memory_Map_(x86)
+%define LAST_SEGMENT 0x70000 
+; The last valid sp value given that we set ss to 0x0050
+;
+; This puts the stack in the ~30k area of free memory between the BIOS data and
+; the start of this code (0x7C00)
+%define MAX_STACK_POINTER 0x2BFF
 
 ; Jump past the BIOS Parameter block, which is needed for USB boots
 ;
