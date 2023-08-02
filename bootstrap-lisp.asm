@@ -90,7 +90,11 @@ run_code:
   .not_end:
 
   call parse
+
+  push word [cs:env]
+  push type.CONS
   call eval
+  add sp, 4
 
   push di
   call print ; print the eval result to the end of the lisp stack
@@ -161,20 +165,46 @@ env: dw 0
 
 ; Builtin atoms, I just fill the lisp object values every time I use them
 ; They have type.CSATOM and the value is the pointer to the string
-t_str: db 't', 0
-quote_str: db 'quote', 0
-err_str: db 'ERROR', 0
+atoms:
+.t: db 't', 0
+.err: db 'ERROR', 0
+.lookup_err: db 'no-matching-symbol-error', 0
+.not_fn_err: db 'not-a-function-error', 0
+.quote: equ atom_quote
 
 ; Data array of null terminated function names then the function pointer.
 ; The array itself is then null terminated.
 primitives:
-db 'cons', 0
-dw prim_cons
+;db 'cons', 0
+;dw prim_cons
 db 'car', 0
 dw prim_car
 db 'cdr', 0
 dw prim_cdr
+; Note: the CSATOM label for quote must be the exact same string as in the
+; primitives so we can avoid writing another string equals function. This is
+; because when parsing 'test inserts (quote . (test . nil)) using quote_atom.
+atom_quote: db 'quote',0
+dw car ; this primitive is the only one that doesn't need eval or anything!
 db 0
+
+; TODO: in the tinylisp code he calls evlis (eval_each) but I think we only need
+; to evaluate the first argument since we just drop the others
+;
+; for cdr too.
+prim_car:
+  call car ; get the first argument
+  call car ; run car on the argument
+  jmp eval
+
+; TODO: we might need eval_each on prim_cdr but not prim_car, not sure.
+; (car ('foo 'bar)) works but (cdr ('foo 'bar)) doesn't because we try to eval
+; ('bar . nil) but maybe eval_each would turn ('foo 'bar) into (foo bar) and
+; then cdr would return (bar) and not evaluate it again.
+prim_cdr:
+  call car ; get the first argument
+  call cdr ; run car on the argument
+  jmp eval
 
 ; Set the initial state of the lisp global environment
 ;  - Adds the true symbol (so it doesn't need to be quoted)
@@ -185,9 +215,9 @@ setup_env:
   ; Start the global environment with ((t . t) . nil)
   push word 0
   push word type.NIL
-  push word t_str
+  push word atoms.t
   push word type.CSATOM
-  mov ax, t_str
+  mov ax, atoms.t
   mov dx, type.CSATOM
   call add_env
   add sp, 8 ; clear the stack
@@ -249,7 +279,7 @@ cons:
 ;
 ; Input:
 ;   ax,dx          - first object element
-;   [bp+2], [bp+4] - second object element
+;   [bp+4], [bp+2] - second object element
 _cons:
   ; Push the two values of the CONS pair
   mov word [es:di+0], ax
@@ -287,12 +317,14 @@ reverse_cons:
   ret
 
 _err:
-  mov ax, err_str
+  mov ax, atoms.err
   mov dx, type.CSATOM
   ret
 
 ; Return the first element of a linked list or cons pair
 ; Returns an error if the type is not one of those.
+;
+; Must not clobber cx for some callers
 ;
 ; Input: ax, dx - the cons or linked list (which is also a cons)
 ; Output: ax, dx - the lisp object that was the first element
@@ -300,7 +332,7 @@ car:
   test dx, type.CONS
   jz _err
 
-  mov bx, ax ; TODO: save bx if we need the heap
+  mov bx, ax
   mov ax, [es:bx-8]
   mov dx, [es:bx-6]
   ret
@@ -315,9 +347,111 @@ cdr:
   test dx, type.CONS
   jz _err
 
-  mov bx, ax ; TODO: save bx if we need the heap
+  mov bx, ax
   mov ax, [es:bx-4]
   mov dx, [es:bx-2]
+  ret
+
+; Input:
+;   push, push - left hand side
+;   ax, dx - right hand side
+; Output: bx non-zero if true, zero if false
+;
+; Registers:
+;  - does not clobber cx, or bp
+obj_equal:
+  mov bx, sp
+  cmp [ss:bx+4], ax
+  jne .not_equal
+  cmp [ss:bx+2], dx
+  jne .not_equal
+  mov bx, 1
+  ret
+  .not_equal:
+  xor bx, bx
+  ret
+
+; TODO: the environment will contain ATOM and CSATOM when we support define,
+; so we need this function to type check and maybe swap the args or have two
+; versions of the atom_equal to jump to
+;
+; I think it wil be CSATOM vs ATOM and ATOM vs ATOM only.
+; Hopefully no ATOM vs CSATOM. This is only used by lookup_env.
+;
+; If it's ATOM vs ATOM, still no obj_equal. Have to do string compare. Since it
+; might be the same string from two different parts of the code.
+atom_equal:
+  mov bp, sp
+  mov bx, [bp+2] ; memory arg type
+
+  ; Check the basic ATOM bit first, which CSATOM fills
+  test dx, type.ATOM
+  jz .not_atom
+  test bx, type.ATOM
+  jz .not_atom
+
+  cmp dx, type.CSATOM
+  je .reg_csatom
+  ; dx is an ATOM, not a CSATOM
+  ret
+  ; TODO: this happens when there's user-defined symbols
+  ;test bx, type.CSATOM
+  ;jnz _atom_csatom_equal ; TODO Should I just swap the args?
+  ;jmp _atom_atom_equal
+
+  .reg_csatom:
+  cmp bx, type.CSATOM
+  je obj_equal ; both CSATOMs, they always have the same pointer for the string
+  jmp _csatom_atom_equal
+
+  .not_atom:
+  ; TODO return error
+  ret
+
+
+; Does a string match to compare a CSATOM and a ATOM.
+; Assumes the types were already checked.
+;
+; Input:
+;   push, push - type.ATOM
+;   ax, dx - type.CSATOM
+; Output: bx non-zero if true, zero if false
+;
+; Registers:
+;  - does not clobber cx (needed by lookup_env)
+;  - clobbers ax, dx
+_csatom_atom_equal:
+  mov bp, sp
+  mov bx, [bp+4] ; the ATOM pointer
+  mov dx, [bp+2] ; the ATOM length, in dh (and type in dl)
+  mov bp, ax ; the CSATOM pointer
+
+  .loop:
+  test dh, dh
+  jz .end_of_atom
+  cmp byte [cs:bp], 0
+  je .not_equal ; since it was not the end of the ATOM
+
+  mov byte ah, [cs:bp] ; CSATOM char
+  mov byte al, [ds:bx] ; ATOM char
+  cmp ah, al
+  jne .not_equal
+
+  inc bx
+  inc bp
+  dec dh
+  jmp .loop
+
+  .end_of_atom:
+  cmp byte [cs:bp], 0
+  je .equal
+  ;fallthrough
+  .not_equal:
+  xor bx, bx
+  ret
+
+  .equal:
+  mov bx, 1
   ret
 
 ; Adds a defined pair to an environment, which is a list of pairs.
@@ -337,13 +471,58 @@ add_env:
   add bp, 4
   jmp _cons ; takes over the stack frame
 
-prim_cons:
+; Perform a key-value lookup in the env
+;
+; Input:
+;   push, push - the env to lookup in
+;   ax, dx - the key to lookup
+;
+; Output: ax, dx - the looked-up value from the key
+lookup_env:
+  ; Unfortunately we have to swap the input args.
+  ; If we didn't swap here we'd have to swap in both places it is called. I want
+  ; to keep the env on the stack as an implicit arg.
+  mov bp, sp
+  push ax
+  push dx
+  mov ax, [bp+4]
+  mov dx, [bp+2]
+
+  ; Search the env, linked list of pairs
+  .loop:
+  test dx, type.CONS
+  jz .not_found
+
+  mov cx, ax ; save the env pointer (car and obj_equal don't use cx)
+
+  call car ; first pair in env
+  call car ; first key in env
+  call atom_equal ; key == search_key
+
+  ; restore the env object
+  mov ax, cx
+  mov dx, type.CONS ; type was clobbered by car(car(env)) we tested it was cons
+
+  test bx, bx
+  jnz .found_match ; end if the key matched
+
+  ; key didn't match, try the next pair in the env
+  call cdr ; env = cdr(env)
+
+  jmp .loop
+
+  .found_match:
+  call car ; the matching pair
+  call cdr ; the value of the pair
+  add sp, 4 ; remove the key from the stack
   ret
 
-prim_car:
-  ret
-
-prim_cdr:
+  .not_found:
+  ; The lookup key is still on the stack from the swap at the beginning
+  mov ax, atoms.lookup_err
+  mov dx, type.CSATOM
+  call cons ; return (lookup_err . key)
+  add sp, 8 ; remove the key from the stack
   ret
 
 ; Advances the code input and reads a lisp token which is:
@@ -371,6 +550,7 @@ scan:
   je .at_end
   inc si
   jmp .skip_spaces
+
   .past_spaces:
   mov bx, si
 
@@ -478,9 +658,9 @@ parse:
   ; Outer pair (quote . above-result)
   push ax
   push dx
-  mov ax, quote_str
+  mov ax, atoms.quote
   mov dx, type.CSATOM
-  call cons ; takes over the stack frame
+  call cons
   add sp, 4
   ret
   .not_quote:
@@ -502,6 +682,111 @@ parse:
   mov dl, type.ATOM
   ret
 
+; Run a function on arguments, it can be a closure or a primitive
+;
+; Input:
+;   ax, dx - the function to apply
+;   push, push - the arguments to apply the function to
+;   push, push - the env to evaluate in
+; Output: ax, dx - the result of the function call
+apply:
+  mov bp, sp
+
+  cmp dx, type.PRIM
+  jne .not_primitive
+
+  mov bx, ax ; the primitive function pointer
+  ; the arguments are the first arg to the primitive
+  mov ax, [bp+8]
+  mov dx, [bp+6]
+  ; the env is the second arg and already on the stack
+  jmp bx ; call the prim function ; call ret
+
+  .not_primitive:
+
+  cmp dx, type.CLOS
+  jne .not_closure
+
+  ret ; todo
+
+  ; todo save and reset ax,dx
+  call cdr
+  cmp dx, type.NIL
+  je .use_global_env
+  ; todo: use ax, dx for the env in the bind() call
+  jmp .env_set
+  .use_global_env:
+
+  .env_set:
+
+  ; argument names?
+  call car
+  call car
+  ; todo save
+
+  ; Evaluate each of the argument values
+  mov ax, [bp+8]
+  mov dx, [bp+6]
+  ; TODO forward env arg
+  ;call eval_each
+
+  ; closure body
+  call car
+  call cdr
+
+  call eval ; evaluate the bound closure
+
+  .not_closure:
+
+  mov ax, atoms.not_fn_err
+  mov dx, type.CSATOM
+  ret
+
+;
+;
+; Input:
+;   push,push - the env object
+;   ax,dx     - the object to eval
+;
+; Output:
+;   ax,dx - the evaluated result object
+eval:
+  test dx, type.ATOM
+  jnz .atom
+  test dx, type.CONS
+  jnz .cons
+  ret ; return the input for all other types
+
+.atom:
+  jmp lookup_env ; call ret
+
+.cons: ; all cons are treated as function calls
+  ; So we can use the two local variables.
+  ; We only need it before we call eval again so no need to save it
+  mov bp, sp
+
+  ; Save the original input object
+  .orig: equ 4
+  push ax
+  push dx
+
+  ; Extract the arguments of function call
+  call cdr
+  .args: equ 8 ; unused, just to remember what it is
+  push ax
+  push dx
+
+  ; Extract and evaluate the function name
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
+  call car
+  ; Copy the env arg for eval, we have other vars on the stack above it
+  push word [bp+4]
+  push word [bp+2]
+  call eval ; evaluate the function name to get the definition (bp is clobbered now)
+  call apply ; run the function on the arguments
+  add sp, 12 ; remove the locals we pushed
+  ret
 
 ; Print a 16 bit integer in hex to the output buffer
 ;
@@ -645,44 +930,4 @@ print:
 
   ret
 
-  ; TODO: env arg on stack?
-  ; TODO: why is there an env arg?
-eval:
-  ret ; TODO
-
-  test dx, type.ATOM
-  jnz .atom
-  test dx, type.CONS
-  jnz .cons
-
-.atom:
-  ;call assoc
-  ret
-
-.cons:
-  mov bp, sp
-
-  .orig: equ 4
-  push ax
-  push dx
-
-  call cdr
-  .args: equ 8
-  push ax
-  push dx
-
-  mov ax, [bp-.orig]
-  mov dx, [bp-.orig+2]
-  call car
-  ; TODO: env arg
-  call eval
-
-  ; TODO: .args arg, maybe just on the stack is fine?
-  ;call apply
-
-  add sp, 16 ; remove the locals we pushed
-
-  ret
-
 NUM_EXTRA_SECTORS: equ NUM_SECTORS(extra_sectors_start)
-
