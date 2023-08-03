@@ -139,6 +139,16 @@ run_code:
 .output_seg: dw 0
 .output_addr: dw 0
 
+objsize: equ 4
+
+objarg1:
+.value: equ 4
+.type: equ 2
+
+objarg2:
+.value: equ 8
+.type: equ 6
+
 ; Objects on the lisp stack are two words, the value and then the type.
 ; This is the type enum.
 ;
@@ -220,7 +230,7 @@ setup_env:
   mov ax, atoms.t
   mov dx, type.CSATOM
   call add_env
-  add sp, 8 ; clear the stack
+  add sp, 2*objsize ; clear the stack
 
   ; Add each primitive function to the env
   push si
@@ -246,8 +256,8 @@ setup_env:
   push word [cs:si+1]
   push type.PRIM
   call add_env
-  add sp, 8 ; clear the stack
-  add si, 3
+  add sp, 2*objsize ; clear the stack
+  add si, 3 ; null terminator plus the 2 byte function pointer
   jmp .prim_loop
 .end_prim:
   pop si
@@ -284,8 +294,8 @@ _cons:
   ; Push the two values of the CONS pair
   mov word [es:di+0], ax
   mov word [es:di+2], dx
-  mov dx, [bp+2]
-  mov ax, [bp+4]
+  mov ax, [bp+objarg1.value]
+  mov dx, [bp+objarg1.type]
   mov word [es:di+4], ax
   mov word [es:di+6], dx
   add di, 8
@@ -306,8 +316,8 @@ reverse_cons:
   ; Push the two values of the CONS pair
   mov word [es:di+4], ax
   mov word [es:di+6], dx
-  mov dx, [bp+2]
-  mov ax, [bp+4]
+  mov ax, [bp+objarg1.value]
+  mov dx, [bp+objarg1.type]
   mov word [es:di+0], ax
   mov word [es:di+2], dx
   add di, 8
@@ -361,9 +371,9 @@ cdr:
 ;  - does not clobber cx, or bp
 obj_equal:
   mov bx, sp
-  cmp [ss:bx+4], ax
+  cmp [ss:bx+objarg1.value], ax
   jne .not_equal
-  cmp [ss:bx+2], dx
+  cmp [ss:bx+objarg1.type], dx
   jne .not_equal
   mov bx, 1
   ret
@@ -382,7 +392,7 @@ obj_equal:
 ; might be the same string from two different parts of the code.
 atom_equal:
   mov bp, sp
-  mov bx, [bp+2] ; memory arg type
+  mov bx, [bp+objarg1.type] ; memory arg type
 
   ; Check the basic ATOM bit first, which CSATOM fills
   test dx, type.ATOM
@@ -422,8 +432,8 @@ atom_equal:
 ;  - clobbers ax, dx
 _csatom_atom_equal:
   mov bp, sp
-  mov bx, [bp+4] ; the ATOM pointer
-  mov dx, [bp+2] ; the ATOM length, in dh (and type in dl)
+  mov bx, [bp+objarg1.value] ; the ATOM pointer
+  mov dx, [bp+objarg1.type] ; the ATOM length, in dh (and type in dl)
   mov bp, ax ; the CSATOM pointer
 
   .loop:
@@ -468,7 +478,7 @@ _csatom_atom_equal:
 add_env:
   mov bp, sp
   call _cons
-  add bp, 4
+  add bp, objsize
   jmp _cons ; takes over the stack frame
 
 ; Perform a key-value lookup in the env
@@ -485,8 +495,8 @@ lookup_env:
   mov bp, sp
   push ax
   push dx
-  mov ax, [bp+4]
-  mov dx, [bp+2]
+  mov ax, [bp+objarg1.value]
+  mov dx, [bp+objarg1.type]
 
   ; Search the env, linked list of pairs
   .loop:
@@ -514,7 +524,7 @@ lookup_env:
   .found_match:
   call car ; the matching pair
   call cdr ; the value of the pair
-  add sp, 4 ; remove the key from the stack
+  add sp, objsize ; remove the key from the stack
   ret
 
   .not_found:
@@ -522,7 +532,7 @@ lookup_env:
   mov ax, atoms.lookup_err
   mov dx, type.CSATOM
   call cons ; return (lookup_err . key)
-  add sp, 8 ; remove the key from the stack
+  add sp, objsize ; remove the key from the stack
   ret
 
 ; Advances the code input and reads a lisp token which is:
@@ -654,14 +664,14 @@ parse:
   push word 0
   push word type.NIL
   call cons
-  add sp, 4
+  add sp, objsize
   ; Outer pair (quote . above-result)
   push ax
   push dx
   mov ax, atoms.quote
   mov dx, type.CSATOM
   call cons
-  add sp, 4
+  add sp, objsize
   ret
   .not_quote:
 
@@ -697,8 +707,8 @@ apply:
 
   mov bx, ax ; the primitive function pointer
   ; the arguments are the first arg to the primitive
-  mov ax, [bp+8]
-  mov dx, [bp+6]
+  mov ax, [bp+objarg2.value]
+  mov dx, [bp+objarg2.type]
   ; the env is the second arg and already on the stack
   jmp bx ; call the prim function ; call ret
 
@@ -725,8 +735,8 @@ apply:
   ; todo save
 
   ; Evaluate each of the argument values
-  mov ax, [bp+8]
-  mov dx, [bp+6]
+  mov ax, [bp+objarg2.value]
+  mov dx, [bp+objarg2.type]
   ; TODO forward env arg
   ;call eval_each
 
@@ -781,11 +791,11 @@ eval:
   mov dx, [bp-.orig]
   call car
   ; Copy the env arg for eval, we have other vars on the stack above it
-  push word [bp+4]
-  push word [bp+2]
+  push word [bp+objarg1.value]
+  push word [bp+objarg1.type]
   call eval ; evaluate the function name to get the definition (bp is clobbered now)
   call apply ; run the function on the arguments
-  add sp, 12 ; remove the locals we pushed
+  add sp, 3*objsize ; remove the locals we pushed
   ret
 
 ; Print a 16 bit integer in hex to the output buffer
