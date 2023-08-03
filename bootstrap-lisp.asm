@@ -198,23 +198,24 @@ atom_quote: db 'quote',0
 dw car ; this primitive is the only one that doesn't need eval or anything!
 db 0
 
-; TODO: in the tinylisp code he calls evlis (eval_each) but I think we only need
-; to evaluate the first argument since we just drop the others
-;
-; for cdr too.
+; TODO should there be an error if there's more than one argument?
 prim_car:
+  mov bp, sp
   call car ; get the first argument
-  call car ; run car on the argument
-  jmp eval
+  push word [bp+objarg1.value]
+  push word [bp+objarg1.type]
+  call eval
+  add sp, objsize
+  jmp car ; run car on the argument
 
-; TODO: we might need eval_each on prim_cdr but not prim_car, not sure.
-; (car ('foo 'bar)) works but (cdr ('foo 'bar)) doesn't because we try to eval
-; ('bar . nil) but maybe eval_each would turn ('foo 'bar) into (foo bar) and
-; then cdr would return (bar) and not evaluate it again.
 prim_cdr:
+  mov bp, sp
   call car ; get the first argument
-  call cdr ; run car on the argument
-  jmp eval
+  push word [bp+objarg1.value]
+  push word [bp+objarg1.type]
+  call eval
+  add sp, objsize
+  jmp cdr
 
 ; Set the initial state of the lisp global environment
 ;  - Adds the true symbol (so it doesn't need to be quoted)
