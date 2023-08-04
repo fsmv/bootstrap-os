@@ -6,8 +6,9 @@
 ;
 ; This code was heavily inspired by tinylisp. Mainly the datastructure, a stack
 ; of typed objects, and the way that the logic is built around using that
-; datastructure internally. I have made some important changes though, a
-; possibly not exhaustive list:
+; datastructure internally. Also I'm not sure if it's possible to have a
+; different eval function and still call it lisp. I have made some important
+; changes though, a possibly not exhaustive list:
 ;
 ;  - I'm using integers not doubles and I didn't do the NaN trick to pack the
 ;    type information in, and I decided to just use two words instead of
@@ -21,6 +22,11 @@
 ;  - I simplified a lot of things in parsing. For one thing I didn't use a
 ;    buffer for the tokens, I just point into the code. Several of the functions
 ;    in tinylisp are just inlined in my code. etc.
+;  - I changed eval_each to just use the CPU's loop construct instead of using
+;    recursion with the lisp constructs to do it. It's interesting that you
+;    could basically implement it in lisp but I'm implementing it in x86.
+;  - I changed some names of things to hopefully make it more clear and don't
+;    have all of the same functions because of the above changes
 
 %include "bootloader/bootsect.asm"
 
@@ -91,10 +97,8 @@ run_code:
 
   call parse
 
-  push word [cs:env]
-  push type.CONS
+  mov cx, [cs:env]
   call eval
-  add sp, 4
 
   push di
   call print ; print the eval result to the end of the lisp stack
@@ -198,24 +202,16 @@ atom_quote: db 'quote',0
 dw car ; this primitive is the only one that doesn't need eval or anything!
 db 0
 
-; TODO should there be an error if there's more than one argument?
+; TODO should there be an error if there's more than one argument? A: yes in CL
 prim_car:
-  mov bp, sp
   call car ; get the first argument
-  push word [bp+objarg1.value]
-  push word [bp+objarg1.type]
-  call eval
-  add sp, objsize
+  call eval ; eval the argument
   jmp car ; run car on the argument
 
 prim_cdr:
-  mov bp, sp
   call car ; get the first argument
-  push word [bp+objarg1.value]
-  push word [bp+objarg1.type]
-  call eval
-  add sp, objsize
-  jmp cdr
+  call eval ; eval the argument
+  jmp cdr ; run cdr on the argument
 
 ; Set the initial state of the lisp global environment
 ;  - Adds the true symbol (so it doesn't need to be quoted)
@@ -352,6 +348,8 @@ car:
 ; cutting off the first element.
 ; Returns an error if the type is not cons or a linked list.
 ;
+; Must not clobber cx for some callers
+;
 ; Input: ax, dx - the cons or linked list (which is also a cons)
 ; Output: ax, dx - the lisp object that was the second element
 cdr:
@@ -485,26 +483,24 @@ add_env:
 ; Perform a key-value lookup in the env
 ;
 ; Input:
-;   push, push - the env to lookup in
+;   cx - the env to lookup in (assumed to be CONS)
 ;   ax, dx - the key to lookup
 ;
 ; Output: ax, dx - the looked-up value from the key
 lookup_env:
-  ; Unfortunately we have to swap the input args.
-  ; If we didn't swap here we'd have to swap in both places it is called. I want
-  ; to keep the env on the stack as an implicit arg.
-  mov bp, sp
+  push cx ; save the original env arg so we don't clobber it
+
+  ; Unfortunately we have to swap the input args, so we can do operations on the
+  ; env. If we didn't swap here we'd have to swap in both places it is called.
   push ax
   push dx
-  mov ax, [bp+objarg1.value]
-  mov dx, [bp+objarg1.type]
+  mov ax, cx
+  mov dx, type.CONS
 
   ; Search the env, linked list of pairs
   .loop:
   test dx, type.CONS
   jz .not_found
-
-  mov cx, ax ; save the env pointer (car and obj_equal don't use cx)
 
   call car ; first pair in env
   call car ; first key in env
@@ -519,6 +515,7 @@ lookup_env:
 
   ; key didn't match, try the next pair in the env
   call cdr ; env = cdr(env)
+  mov cx, ax
 
   jmp .loop
 
@@ -526,6 +523,7 @@ lookup_env:
   call car ; the matching pair
   call cdr ; the value of the pair
   add sp, objsize ; remove the key from the stack
+  pop cx ; restore the original env pointer
   ret
 
   .not_found:
@@ -534,6 +532,7 @@ lookup_env:
   mov dx, type.CSATOM
   call cons ; return (lookup_err . key)
   add sp, objsize ; remove the key from the stack
+  pop cx ; restore the original env pointer
   ret
 
 ; Advances the code input and reads a lisp token which is:
@@ -697,8 +696,8 @@ parse:
 ;
 ; Input:
 ;   ax, dx - the function to apply
+;   cx     - the env pointer
 ;   push, push - the arguments to apply the function to
-;   push, push - the env to evaluate in
 ; Output: ax, dx - the result of the function call
 apply:
   mov bp, sp
@@ -708,9 +707,9 @@ apply:
 
   mov bx, ax ; the primitive function pointer
   ; the arguments are the first arg to the primitive
-  mov ax, [bp+objarg2.value]
-  mov dx, [bp+objarg2.type]
-  ; the env is the second arg and already on the stack
+  mov ax, [bp+objarg1.value]
+  mov dx, [bp+objarg1.type]
+  ; the env is in cx already
   jmp bx ; call the prim function ; call ret
 
   .not_primitive:
@@ -739,7 +738,7 @@ apply:
   mov ax, [bp+objarg2.value]
   mov dx, [bp+objarg2.type]
   ; TODO forward env arg
-  ;call eval_each
+  call eval_each
 
   ; closure body
   call car
@@ -753,11 +752,45 @@ apply:
   mov dx, type.CSATOM
   ret
 
-;
+; Evaluates each element of the 
 ;
 ; Input:
 ;   push,push - the env object
+;   ax,dx     - a list of objects to eval
+;
+; Output:
+;   ax,dx - the list of evaluated result objects
+eval_each:
+  test dx, type.CONS
+  jnz .cons
+  ; TODO: should this be an error sometimes or is empty list right for atoms?
+  mov ax, 0
+  mov dx, type.NIL
+  ret
+  .cons:
+
+  push ax
+  push dx
+  call car
+  call eval
+  ret
+
+; Primarily interprets the first element of a list as a function (closure
+; actually) and then applies it returning the result.
+;
+; eval does this by first recursively evaluating it, which either looks it up in
+; the env if it's a name, or does the same eval apply until it ends in name
+; lookups in the env. Having computed the function body, either a closure
+; created with the lambda primitive or a primitive function pointer, it applies
+; the function body on the arguments (after first eval_each-ing the arguments),
+; and returns the result as a replacement for the function call input.
+;
+; Also, as mentioned in the paragraph, for an ATOM it just does a lookup in the
+; env and then returns the stored result. This ends the recursion.
+;
+; Input:
 ;   ax,dx     - the object to eval
+;   cx        - the environment pointer, assumed to be type.CONS
 ;
 ; Output:
 ;   ax,dx - the evaluated result object
@@ -787,16 +820,14 @@ eval:
   push ax
   push dx
 
-  ; Extract and evaluate the function name
+  ; Extract the function name
   mov ax, [bp-.orig+2]
   mov dx, [bp-.orig]
   call car
-  ; Copy the env arg for eval, we have other vars on the stack above it
-  push word [bp+objarg1.value]
-  push word [bp+objarg1.type]
+  ; env is still in cx
   call eval ; evaluate the function name to get the definition (bp is clobbered now)
-  call apply ; run the function on the arguments
-  add sp, 3*objsize ; remove the locals we pushed
+  call apply ; run the function on the arguments (with bound variables)
+  add sp, 2*objsize ; remove the locals we pushed
   ret
 
 ; Print a 16 bit integer in hex to the output buffer
