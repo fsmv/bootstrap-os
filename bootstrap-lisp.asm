@@ -22,9 +22,6 @@
 ;  - I simplified a lot of things in parsing. For one thing I didn't use a
 ;    buffer for the tokens, I just point into the code. Several of the functions
 ;    in tinylisp are just inlined in my code. etc.
-;  - I changed eval_each to just use the CPU's loop construct instead of using
-;    recursion with the lisp constructs to do it. It's interesting that you
-;    could basically implement it in lisp but I'm implementing it in x86.
 ;  - I changed some names of things to hopefully make it more clear and don't
 ;    have all of the same functions because of the above changes
 
@@ -188,6 +185,15 @@ atoms:
 
 ; Data array of null terminated function names then the function pointer.
 ; The array itself is then null terminated.
+;
+; All primitives have tho following call signature:
+;
+; Input:
+;   ax,dx     - the arguments (everything but the prim name)
+;   cx        - the environment pointer, assumed to be type.CONS
+;
+; Output:
+;   ax,dx - the result object
 primitives:
 ;db 'cons', 0
 ;dw prim_cons
@@ -200,6 +206,10 @@ dw prim_cdr
 ; because when parsing 'test inserts (quote . (test . nil)) using quote_atom.
 atom_quote: db 'quote',0
 dw car ; this primitive is the only one that doesn't need eval or anything!
+db 'lambda', 0
+dw prim_lambda
+db 'define', 0
+dw prim_define
 db 0
 
 ; TODO should there be an error if there's more than one argument? A: yes in CL
@@ -212,6 +222,92 @@ prim_cdr:
   call car ; get the first argument
   call eval ; eval the argument
   jmp cdr ; run cdr on the argument
+
+; Creates a closure object which looks like
+; ((v . x) . e) where e is replaced with nil if it was cs:env
+; from the defined (lambda v x).
+;
+; v is a list of argument names.
+; x is a lisp expression which will have the argument defined in the env when called
+;
+; For example:
+;  (lambda (l) (car (cdr l)))
+; evaluates to
+;  ( ( (l) . (car (cdr l)) ) . nil )
+; which is printed as: (because there's no way to distingish a cons from a list start)
+;  (((l) car (cdr l)))
+prim_lambda:
+  mov bp, sp
+  .orig: equ 4
+  push ax
+  push dx
+
+  ; Conditionally set the env arg for add_env
+  ; Start with the bound env or nil TODO: better
+  cmp cx, [cs:env]
+  je .push_nil
+  push cx
+  push type.CONS
+  jmp .env_set
+  .push_nil:
+  push word 0
+  push type.NIL
+  .env_set:
+
+  ; Extract the function body and push it for add_env
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
+  call cdr
+  call car
+  push ax
+  push dx
+
+  ; Extract the argument names
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
+  call car
+  ; Creates ((arg_names . function_body) . cs:env or nil)
+  call add_env ; TODO: probably better to just inline the cons calls here
+  mov dx, type.CLOS
+  add sp, 3*objsize
+  ret
+
+prim_define:
+  mov bp, sp
+  .orig: equ 4
+  push ax
+  push dx
+
+  push word [cs:env]
+  push type.CONS
+
+  ; Evaluate the values
+  call cdr
+  call car
+  call eval
+  push ax
+  push dx
+
+  mov bp, sp
+  add bp, 3*objsize
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
+  call car ; get the name
+  call add_env ; add the name mapped to the value onto the global env
+  mov [cs:env], ax
+
+  ; TODO temporarily return the env not the symbol
+  ;add sp, 3*objsize ; drop everything we pushed (but then read it anyway)
+  ;ret
+
+  add sp, 3*objsize ; drop everything we pushed (but then read it anyway)
+  mov bp, sp
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
+  call car
+  ; return the name we defined
+  ; TODO: is there something nicer I can return? Maybe print nothing
+  ret
 
 ; Set the initial state of the lisp global environment
 ;  - Adds the true symbol (so it doesn't need to be quoted)
@@ -380,15 +476,19 @@ obj_equal:
   xor bx, bx
   ret
 
-; TODO: the environment will contain ATOM and CSATOM when we support define,
-; so we need this function to type check and maybe swap the args or have two
-; versions of the atom_equal to jump to
+; Compare any two objects that have the type.ATOM bits (ATOM or CSATOM)
 ;
-; I think it wil be CSATOM vs ATOM and ATOM vs ATOM only.
-; Hopefully no ATOM vs CSATOM. This is only used by lookup_env.
+; Because we have 2 string types there are 4 possible combinations we might have
+; to compare. This function picks the right routine for each.
 ;
-; If it's ATOM vs ATOM, still no obj_equal. Have to do string compare. Since it
-; might be the same string from two different parts of the code.
+; Input:
+;   push, push - type.ATOM or type.CSATOM
+;   ax, dx - type.ATOM or type.CSATOM
+; Output: bx non-zero if true, zero if false
+;
+; Registers:
+;  - does not clobber cx (needed by lookup_env)
+;  - clobbers ax, dx
 atom_equal:
   mov bp, sp
   mov bx, [bp+objarg1.type] ; memory arg type
@@ -401,12 +501,10 @@ atom_equal:
 
   cmp dx, type.CSATOM
   je .reg_csatom
-  ; dx is an ATOM, not a CSATOM
-  ret
-  ; TODO: this happens when there's user-defined symbols
-  ;test bx, type.CSATOM
-  ;jnz _atom_csatom_equal ; TODO Should I just swap the args?
-  ;jmp _atom_atom_equal
+  ; dx is ATOM
+  cmp bx, type.CSATOM
+  je _atom_csatom_equal
+  jmp _atom_atom_equal
 
   .reg_csatom:
   cmp bx, type.CSATOM
@@ -415,6 +513,48 @@ atom_equal:
 
   .not_atom:
   ; TODO return error
+  ret
+
+; Input:
+;   push, push - type.ATOM
+;   ax, dx - type.ATOM
+; Output: bx non-zero if true, zero if false
+;
+; Registers:
+;  - does not clobber cx (needed by lookup_env)
+;  - clobbers ax, dx
+_atom_atom_equal:
+  mov bp, sp
+
+  ; Check the lengths first
+  mov bx, [bp+objarg1.type]
+  cmp bh, dh
+  jne .not_equal
+
+  ; Size is equal, now check the characters
+  mov bx, [bp+objarg1.value]
+  mov bp, ax
+  .loop:
+  test dh, dh
+  jz .equal
+
+  mov byte ah, [ds:bp]
+  mov byte al, [ds:bx]
+  cmp ah, al
+  jne .not_equal
+
+  inc bx
+  inc bp
+  dec dh
+
+  jmp .loop
+
+  .equal:
+  mov bx, 1
+  ret
+
+  .not_equal:
+  xor bx, bx
   ret
 
 
@@ -461,6 +601,25 @@ _csatom_atom_equal:
 
   .equal:
   mov bx, 1
+  ret
+
+; Input:
+;   push, push - type.CSATOM
+;   ax, dx - type.ATOM
+; Output: bx non-zero if true, zero if false
+_atom_csatom_equal:
+  ; Note: this currently only happens if there's a user-defined symbol in the
+  ; env and a csatom in the code, which only happens for quote. So this
+  ; comparison only happens if the user re-defines quote.
+  ;
+  ; So just swap the args and call the function we already have.
+  mov bp, sp
+  push ax
+  push dx
+  mov ax, [bp+objarg1.value]
+  mov dx, [bp+objarg1.type]
+  call _csatom_atom_equal
+  add sp, objsize ; no need to restore ax,dx
   ret
 
 ; Adds a defined pair to an environment, which is a list of pairs.
@@ -655,6 +814,7 @@ parse:
   jmp _parse_list ; takes over our stack frame
   .not_list:
 
+  ; TODO: (quote ((l) (car (cdr l)))) works but not with the '
   cmp byte [ds:bx], "'"
   jne .not_quote
   ; Return (quote . (parse() . nil)) i.e. (quote parse())
@@ -692,6 +852,76 @@ parse:
   mov dl, type.ATOM
   ret
 
+; Adds entries to the given environment for each of the variable names in the
+; list mapping them to the evaluated result of the values.
+;
+; This is used to give closure arguments values when running the function body.
+;
+; Input:
+;   ax, dx - the variable names to bind
+;   cx     - the env pointer to extend
+;   push, push - the values to bind to the names
+; Output: cx - the newly bound env
+bind_variables:
+  cmp dx, type.NIL
+  je .nil
+
+  test dx, type.CONS
+  jnz .cons
+  mov bp, sp
+
+  ; End of the recursion
+  ; TODO what should the type be?
+  push cx
+  push type.CONS
+  push word [bp+objarg1.value]
+  push word [bp+objarg1.type]
+  call add_env
+  add sp, 2*objsize
+  mov cx, ax
+  ret
+
+  .nil:
+  ret ; just return the env we started with
+
+  .cons:
+  mov bp, sp
+  .orig: equ 4
+  push ax
+  push dx
+
+  push cx
+  push type.CONS
+
+  mov ax, [bp+objarg1.value]
+  mov dx, [bp+objarg1.type]
+  call car
+  push ax
+  push dx
+
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
+  call car
+  call add_env
+  mov cx, ax ; env arg to bind_variables is the add_env result
+  add sp, 2*objsize ; remove the add_env args, keeping .orig
+
+  mov bp, sp
+  add bp, objsize ; restore bp after add_env
+
+  mov ax, [bp+objarg1.value]
+  mov dx, [bp+objarg1.type]
+  call cdr
+  push ax
+  push dx
+
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
+  call cdr
+  call bind_variables
+  add sp, 2*objsize ; remove bind_variables arg and .orig
+  ret
+
 ; Run a function on arguments, it can be a closure or a primitive
 ;
 ; Input:
@@ -716,35 +946,56 @@ apply:
 
   cmp dx, type.CLOS
   jne .not_closure
+  ; It's a closure, run it. This section could be called "reduce"
 
-  ret ; todo
+  .orig: equ 4
+  push ax
+  push dx
 
-  ; todo save and reset ax,dx
+  ; Evaluate the arguments to get the values to bind to the closure
+  mov ax, [bp+objarg1.value]
+  mov dx, [bp+objarg1.type]
+  call eval_each
+  mov bp, sp
+  add bp, objsize ; restore bp after eval_each
+  push cx ; save the environment so we don't clobber it
+  ; push the evaluated arguments for calling bind_variables
+  push ax
+  push dx
+
+  ; TODO: better explanation
+  ; Start with env provided or the global env if not
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
   call cdr
   cmp dx, type.NIL
   je .use_global_env
-  ; todo: use ax, dx for the env in the bind() call
+  ; TODO: make sure dx is a CONS?
+  mov cx, ax
   jmp .env_set
   .use_global_env:
-
+  mov cx, [cs:env]
   .env_set:
 
-  ; argument names?
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
   call car
   call car
-  ; todo save
+  call bind_variables
 
-  ; Evaluate each of the argument values
-  mov ax, [bp+objarg2.value]
-  mov dx, [bp+objarg2.type]
-  ; TODO forward env arg
-  call eval_each
+  add sp, objsize ; drop the bind_variables arguments
+  mov bp, sp
+  add bp, 2+objsize ; restore bp so we can get the args
 
-  ; closure body
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
+  add sp, objsize ; drop the saved original ax,dx argument
   call car
   call cdr
+  call eval ; Evaluate the function body with the bound variables env
 
-  call eval ; evaluate the bound closure
+  pop cx ; restore the original environment
+  ret
 
   .not_closure:
 
@@ -755,24 +1006,50 @@ apply:
 ; Evaluates each element of the 
 ;
 ; Input:
-;   push,push - the env object
-;   ax,dx     - a list of objects to eval
+;   ax,dx - a list of objects to eval
+;   cx    - the env pointer
 ;
 ; Output:
 ;   ax,dx - the list of evaluated result objects
-eval_each:
-  test dx, type.CONS
+eval_each: ; TODO: switch to the loop implementation
+  test dx, type.CONS ; TODO: should CLOS count or not?
   jnz .cons
-  ; TODO: should this be an error sometimes or is empty list right for atoms?
+
+  test dx, type.ATOM
+  jnz .atom
+  ; This ends the recursion since the end of the list is nil
+  ; TODO: should this be an error if dx is not NIL? INT and PRIM remain
   mov ax, 0
   mov dx, type.NIL
   ret
+
+  .atom:
+  jmp lookup_env
+
   .cons:
 
+  ; Save the original argument (start of the list)
+  mov bp, sp
+  .val: equ 2
+  push ax
+  .typ: equ 4
+  push dx
+
+  ; recursively eval_each the rest of the list
+  call cdr
+  call eval_each
+  ; save the result, to forward to cons
   push ax
   push dx
+
+  ; Evaluate the first element
+  mov ax, [bp-.val] ; restore the original argument
+  mov dx, [bp-.typ]
   call car
   call eval
+
+  call cons
+  add sp, 2*objsize
   ret
 
 ; Primarily interprets the first element of a list as a function (closure
@@ -885,8 +1162,8 @@ _print_list:
   test dx, type.NIL
   jnz .done
 
-  test dx, type.CONS
-  jnz .next_element
+  cmp dx, type.CONS
+  je .next_element
 
   mov word [es:di], " ."
   mov byte [es:di+2], ' '
@@ -969,6 +1246,11 @@ print:
   jne .not_cons
   jmp _print_list ; call ret
   .not_cons:
+
+  cmp dx, type.CLOS
+  jne .not_clos
+  jmp _print_list ; TODO print closure
+  .not_clos:
 
   ret
 
