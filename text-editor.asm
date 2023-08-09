@@ -88,7 +88,35 @@ xor di, di
 mov si, GAP_SIZE
 mov byte [es:si], 0 ; null-terminate the string
 
+%ifndef DEBUG_TEXT
+
 jmp typing_loop
+
+%else
+
+mov di, debug_text
+copy_debug_text:
+mov al, [cs:di]
+mov [es:si], al
+cmp byte [cs:di], 0
+je done_copy_debug
+inc di
+inc si
+jmp copy_debug_text
+done_copy_debug:
+
+xor di, di
+mov si, GAP_SIZE
+
+mov bp, si
+call scan_forward
+call print_line
+jmp set_cursor_and_continue
+
+debug_text:
+db "(define elm2 (lambda (l) (car (cdr l)))) (elm2 '(foo bar baz))", 0
+
+%endif
 
 ; Optionally change the keyboard layout.
 ;
@@ -114,28 +142,28 @@ num_debug_prints: db 0x00
 ; cx = two bytes to write at current cursor
 ; clobbers ax, and bx
 debug_print_hex:
-  push dx ; Save the cursor position
+push dx ; Save the cursor position
 
-  ; One row above the top of the text area
-  mov dl, START_COL
-  xor dh, dh
+; One row above the top of the text area
+mov dl, START_COL
+xor dh, dh
 
-  ; Calculate where to print based on number of words we have printed
-  xor ax, ax
-  mov byte al, [num_debug_prints]
-  mov bl, NUM_PRINTS_PER_ROW
-  div bl
-  ; al = (num_debug_prints)/(num_per_row); ah = (num_debug_prints) % (num_per_row)
+; Calculate where to print based on number of words we have printed
+xor ax, ax
+mov byte al, [num_debug_prints]
+mov bl, NUM_PRINTS_PER_ROW
+div bl
+; al = (num_debug_prints)/(num_per_row); ah = (num_debug_prints) % (num_per_row)
 
-  add dh, al ; row += the row to print on
+add dh, al ; row += the row to print on
 
-  ; Reset the count so we overwrite at the beginning
-  cmp dh, START_ROW
-  jne .no_reset
-  mov byte [num_debug_prints], 0
-  xor ax, ax
-  xor dh, dh
-  .no_reset:
+; Reset the count so we overwrite at the beginning
+cmp dh, START_ROW
+jne .no_reset
+mov byte [num_debug_prints], 0
+xor ax, ax
+xor dh, dh
+.no_reset:
 
   inc byte [num_debug_prints] ; remember that we printed
 
@@ -293,6 +321,7 @@ prepare_and_run_code:
   inc si ; skip the \n
   ; fallthrough
   .set_marker:
+  ; TODO: wrong line?
   call set_line_scroll_marker
 
   mov dh, END_ROW
