@@ -814,7 +814,6 @@ parse:
   jmp _parse_list ; takes over our stack frame
   .not_list:
 
-  ; TODO: (quote ((l) (car (cdr l)))) works but not with the '
   cmp byte [ds:bx], "'"
   jne .not_quote
   ; Return (quote . (parse() . nil)) i.e. (quote parse())
