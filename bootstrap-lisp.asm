@@ -34,6 +34,14 @@ extra_sectors_start:
 %define RUN_CODE
 %include "text-editor.asm"
 
+%ifdef DEBUG_TEXT
+debug_text:
+;db "(define elm2 (lambda (l) (car (cdr l)))) (elm2 '(foo bar baz))", 0
+;db "(quote ((l) . (car (cdr l)))) \n '((l) . (car (cdr l)))", 0
+db "(define append1 (lambda (s t) (cond ((pair? s) (cons (car s) (append1 (cdr s) t))) (#t t) ))) (append1 '(this is a) '(test))", 0
+;db "(eq? 'a 'a) (eq? 'a 'b) (eq? #t #t) (eq? () ()) (define foo '(test me)) (eq? foo foo) (eq? '(foo) '(foo))", 0
+%endif
+
 ; Run the lisp interpreter!
 ;
 ; Input:
@@ -177,7 +185,7 @@ env: dw 0
 ; Builtin atoms, I just fill the lisp object values every time I use them
 ; They have type.CSATOM and the value is the pointer to the string
 atoms:
-.t: db 't', 0
+.t: db '#t', 0
 .err: db 'ERROR', 0
 .lookup_err: db 'no-matching-symbol-error', 0
 .not_fn_err: db 'not-a-function-error', 0
@@ -185,6 +193,9 @@ atoms:
 
 ; Data array of null terminated function names then the function pointer.
 ; The array itself is then null terminated.
+;
+; This list is searched in order from bottom to top so it's best to put the most
+; frequently used primitives last.
 ;
 ; All primitives have tho following call signature:
 ;
@@ -195,12 +206,10 @@ atoms:
 ; Output:
 ;   ax,dx - the result object
 primitives:
-;db 'cons', 0
-;dw prim_cons
-db 'car', 0
-dw prim_car
-db 'cdr', 0
-dw prim_cdr
+db 'cons', 0
+dw prim_cons
+db 'pair?', 0
+dw prim_is_pair
 ; Note: the CSATOM label for quote must be the exact same string as in the
 ; primitives so we can avoid writing another string equals function. This is
 ; because when parsing 'test inserts (quote . (test . nil)) using quote_atom.
@@ -210,7 +219,37 @@ db 'lambda', 0
 dw prim_lambda
 db 'define', 0
 dw prim_define
+db 'eq?', 0
+dw prim_eq
+db 'cond', 0
+dw prim_cond
+db 'car', 0
+dw prim_car
+db 'cdr', 0
+dw prim_cdr
 db 0
+
+prim_cons:
+  call eval_each
+  mov bp, sp
+  .orig: equ 4
+  push ax
+  push dx
+
+
+  ; The second arg to cons
+  call cdr
+  call car
+  push ax
+  push dx
+
+  ; The first arg to cons
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
+  call car
+  call cons
+  add sp, 2*objsize
+  ret
 
 ; TODO should there be an error if there's more than one argument? A: yes in CL
 prim_car:
@@ -222,6 +261,115 @@ prim_cdr:
   call car ; get the first argument
   call eval ; eval the argument
   jmp cdr ; run cdr on the argument
+
+prim_is_pair:
+  call car ; get the first argument
+  call eval ; eval the argument
+
+  test dx, type.CONS
+  jz .false
+  mov ax, atoms.t
+  mov dx, type.CSATOM
+  ret
+  .false:
+  mov ax, 0
+  mov dx, type.NIL
+  ret
+
+prim_eq:
+  call eval_each
+  mov bp, sp
+  .orig: equ 4
+  push ax
+  push dx
+
+  ; The second arg
+  call cdr
+  call car
+  push ax
+  push dx
+  .rhs_type: equ 8
+
+  ; The first arg
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
+  call car
+
+  ; ATOM bits need special treatment because there are multiple string types
+  test dx, type.ATOM
+  jnz .lhs_atom
+
+  ; If it's not an atom just check the type and value
+  call obj_equal
+  jmp .equal_result
+
+  .lhs_atom:
+  mov bx, [bp-.rhs_type]
+  test bx, type.ATOM
+  jnz .both_atom
+  jmp .not_equal
+  .both_atom:
+
+  call atom_equal
+  ; jmp .equal_result
+  ; fallthrough
+
+  .equal_result:
+  test bx, bx
+  jz .not_equal
+
+  ; return true
+  add sp, 2*objsize
+  mov ax, atoms.t
+  mov dx, type.CSATOM
+  ret
+
+  .not_equal:
+  add sp, 2*objsize
+  mov ax, 0
+  mov dx, type.NIL
+  ret
+
+prim_cond:
+  .orig: equ objsize
+  push ax
+  push dx
+
+  .loop:
+  cmp dx, type.NIL
+  je .no_match
+
+  call car
+  call car
+  call eval ; bp clobbered
+  ; TODO: just change the offsets to skip doing the add instruction
+  mov bp, sp
+  add bp, objsize ; restore bp (we skipped setting it the first time)
+  cmp dx, type.NIL
+  jne .found_match
+
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
+  call cdr
+  mov [bp-.orig+2], ax
+  mov [bp-.orig], dx
+
+  jmp .loop
+
+  .no_match:
+  ; TODO: maybe make this an error. LISP 1 and 2 and tinylisp and scheme do it.
+  add sp, objsize
+  ret ; return the NIL, technically the result is "undefined"
+
+  .found_match:
+  mov ax, [bp-.orig+2]
+  mov dx, [bp-.orig]
+  add sp, objsize
+  ; fallthrough
+  call car
+  call cdr
+  call car
+  jmp eval
 
 ; Creates a closure object which looks like
 ; ((v . x) . e) where e is replaced with nil if it was cs:env
@@ -988,12 +1136,13 @@ apply:
 
   mov ax, [bp-.orig+2]
   mov dx, [bp-.orig]
-  add sp, objsize ; drop the saved original ax,dx argument
+
   call car
   call cdr
   call eval ; Evaluate the function body with the bound variables env
 
-  pop cx ; restore the original environment
+  pop cx
+  add sp, objsize ; drop the saved original ax,dx argument
   ret
 
   .not_closure:
@@ -1036,10 +1185,14 @@ eval_each: ; TODO: switch to the loop implementation
 
   ; recursively eval_each the rest of the list
   call cdr
-  call eval_each
+  call eval_each ; bp clobbered
   ; save the result, to forward to cons
   push ax
   push dx
+
+  ; TODO: just change the offsets
+  mov bp, sp
+  add bp, 2*objsize
 
   ; Evaluate the first element
   mov ax, [bp-.val] ; restore the original argument

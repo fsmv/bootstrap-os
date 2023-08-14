@@ -113,10 +113,6 @@ call scan_forward
 call print_line
 jmp set_cursor_and_continue
 
-debug_text:
-;db "(define elm2 (lambda (l) (car (cdr l)))) (elm2 '(foo bar baz))", 0
-db "(quote ((l) . (car (cdr l)))) \n '((l) . (car (cdr l)))", 0
-
 %endif
 
 ; Optionally change the keyboard layout.
