@@ -44,79 +44,8 @@
 ; buffer the gap can be reset for free.
 %define GAP_SIZE (8*ROW_LENGTH)
 
-; Optionally change the keyboard layout.
-;
-; To use a layout: look in the file you want for the %ifdef label and -D define
-; it on the commandline. Ex: ./boot bootstrap-asm.asm -DDVORAK
-;
-; It's easy to make a new layout!
-;
-; Simply pull up an ascii table (my favorite is `man ascii`) then type it out
-; starting from ' ' to '~' using your qwerty keyboard labels using the desired
-; layout in your OS (note: both \ and ` must be escaped for the assembler)
-%include "keyboard-layouts/dvorak.asm"
-; TODO: is the default layout qwerty or hardware specific? My map is qwerty->dvorak only
-
-no_more_room_msg: db `No more room in the code buffer`
-no_more_room_msg_len: equ $-no_more_room_msg
-
-num_debug_prints: db 0x00
-
-; Prints a hex word in the top margin for debugging purposes
-; Supports printing as many as will fit in before it runs into the text area
-;
-; cx = two bytes to write at current cursor
-; clobbers ax, and bx
-debug_print_hex:
-  push dx ; Save the cursor position
-
-  ; One row above the top of the text area
-  mov dl, START_COL
-  xor dh, dh
-
-  ; Calculate where to print based on number of words we have printed
-  xor ax, ax
-  mov byte al, [num_debug_prints]
-  mov bl, NUM_PRINTS_PER_ROW
-  div bl
-  ; al = (num_debug_prints)/(num_per_row); ah = (num_debug_prints) % (num_per_row)
-
-  add dh, al ; row += the row to print on
-
-  ; Reset the count so we overwrite at the beginning
-  cmp dh, START_ROW
-  jne .no_reset
-  mov byte [num_debug_prints], 0
-  xor ax, ax
-  xor dh, dh
-  .no_reset:
-
-  inc byte [num_debug_prints] ; remember that we printed
-
-  ; column += modulus * (hex+" " string length)
-  mov al, ah
-  xor ah, ah
-  mov bl, 5
-  mul bl
-  add dl, al ; note: the mul result technically could be more than 2^8 (in ax) but we know it is less than ROW_LENGTH
-
-  ; set cursor to the location to print
-  mov ah, 0x02
-  xor bh, bh
-  int 0x10 ; dx is the cursor position
-
-  ; Print cx
-  call print_hex
-  ; don't bother printing a space because the margin is blank
-
-  ; reset the cursor
-  pop dx
-  mov ah, 0x02
-  xor bh, bh
-  int 0x10 ; dx is the cursor position
-
-  ret
-
+; start_ should be the first bytes in the file because that's where I have
+; configured gdb to breakpoint
 start_:
 
 ; Set the border color (by clearing the whole screen)
@@ -158,6 +87,107 @@ mov es, ax
 xor di, di
 mov si, GAP_SIZE
 mov byte [es:si], 0 ; null-terminate the string
+
+%ifndef DEBUG_TEXT
+
+jmp typing_loop
+
+%else
+
+mov di, debug_text
+copy_debug_text:
+mov al, [cs:di]
+mov [es:si], al
+cmp byte [cs:di], 0
+je done_copy_debug
+inc di
+inc si
+jmp copy_debug_text
+done_copy_debug:
+
+xor di, di
+mov si, GAP_SIZE
+
+mov bp, si
+call scan_forward
+call print_line
+jmp set_cursor_and_continue
+
+%endif
+
+; Optionally change the keyboard layout.
+;
+; To use a layout: look in the file you want for the %ifdef label and -D define
+; it on the commandline. Ex: ./boot bootstrap-asm.asm -DDVORAK
+;
+; It's easy to make a new layout!
+;
+; Simply pull up an ascii table (my favorite is `man ascii`) then type it out
+; starting from ' ' to '~' using your qwerty keyboard labels using the desired
+; layout in your OS (note: both \ and ` must be escaped for the assembler)
+%include "keyboard-layouts/dvorak.asm"
+; TODO: is the default layout qwerty or hardware specific? My map is qwerty->dvorak only
+
+no_more_room_msg: db `No more room in the code buffer`
+no_more_room_msg_len: equ $-no_more_room_msg
+
+num_debug_prints: db 0x00
+
+; Prints a hex word in the top margin for debugging purposes
+; Supports printing as many as will fit in before it runs into the text area
+;
+; cx = two bytes to write at current cursor
+; clobbers ax, and bx
+debug_print_hex:
+push dx ; Save the cursor position
+
+; One row above the top of the text area
+mov dl, START_COL
+xor dh, dh
+
+; Calculate where to print based on number of words we have printed
+xor ax, ax
+mov byte al, [num_debug_prints]
+mov bl, NUM_PRINTS_PER_ROW
+div bl
+; al = (num_debug_prints)/(num_per_row); ah = (num_debug_prints) % (num_per_row)
+
+add dh, al ; row += the row to print on
+
+; Reset the count so we overwrite at the beginning
+cmp dh, START_ROW
+jne .no_reset
+mov byte [num_debug_prints], 0
+xor ax, ax
+xor dh, dh
+.no_reset:
+
+  inc byte [num_debug_prints] ; remember that we printed
+
+  ; column += modulus * (hex+" " string length)
+  mov al, ah
+  xor ah, ah
+  mov bl, 5
+  mul bl
+  add dl, al ; note: the mul result technically could be more than 2^8 (in ax) but we know it is less than ROW_LENGTH
+
+  ; set cursor to the location to print
+  mov ah, 0x02
+  xor bh, bh
+  int 0x10 ; dx is the cursor position
+
+  ; Print cx
+  call print_hex
+  ; don't bother printing a space because the margin is blank
+
+  ; reset the cursor
+  pop dx
+  mov ah, 0x02
+  xor bh, bh
+  int 0x10 ; dx is the cursor position
+
+  ret
+
 
 ; Note: all of the jumps in typing_loop loop back here (except for run_code)
 ;
@@ -235,14 +265,9 @@ prepare_and_run_code:
   inc ax ; +1 since the shift rounds down and we don't want to overlap
   mov es, ax
   xor di, di
-  push ax ; save es
   call run_code
-
-  ; Reset [es:di] to the beginning of the output address
-  pop ax
-  mov es, ax
-  xor di, di
-  xor si, si
+  ; [es:di] is the output now
+  mov si, di ; set es:si to the same as es:di so the gap buffer code works
 
   ; Print the output
   xor cx, cx
@@ -255,17 +280,55 @@ prepare_and_run_code:
   call scroll_text
   .no_scroll:
 
+
+  mov bp, si
+  call scan_forward
+
+  ; Check if we found the end of the line, and set the right scroll marker
+  mov ax, 0x0000 ; scroll markers: set to off ; right margin
+  cmp cx, ROW_LENGTH
+  jbe .found_end
+
+  ; Move si forward to the start of the next line
+  push bp
+  .next_line_loop:
+  call scan_forward
+  cmp cx, ROW_LENGTH
+  jbe .found_next_line
+  add si, ROW_LENGTH
+  add bp, ROW_LENGTH
+  jmp .next_line_loop
+  .found_next_line:
   add si, cx
+  cmp byte [cs:bp], 0
+  je .end_of_file
+  inc si ; skip the \n
+  .end_of_file:
+  pop bp
+
+  mov cx, ROW_LENGTH ; only print up to the edge of the screen
+  mov ax, 0x0100 ; scroll markers: set to on ; right margin
+  jmp .set_marker
+
+  .found_end:
+  ; move si to the end of the next line
+  add si, cx
+  cmp byte [es:si], 0
+  je .set_marker
+  inc si ; skip the \n
+  ; fallthrough
+  .set_marker:
+  ; TODO: wrong line?
+  call set_line_scroll_marker
+
   mov dh, END_ROW
   mov dl, START_COL
-  call _repaint_bottom_line
-  push cx ; number of chars printed by repaint_bottom_line
+  call print_line
 
-  pop cx
   cmp cx, 0
   jne .print_loop
 
-  ; Read keyboard, so they can read it
+  ; Read keyboard, so they can read the output
   mov ah, 0x00
   int 0x16
 
@@ -523,6 +586,7 @@ backspace:
 
   jmp set_cursor_and_continue
 
+; TODO: I think the cx return isn't used anymore and this can be made private
 _repaint_bottom_line:
   push dx
   ; Note: the first iteration will just be the tail of the new joined line

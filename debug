@@ -27,6 +27,7 @@ fi
 
 # This is a nice config that provides the automatic disassembly and memory
 # printing and several nice functions
+# Mostly use stepi and stepo (skip a function call) from this when you debug
 GDB_REAL_CONF=gdbconf/gdbinit_real_mode.txt
 if ! stat $GDB_REAL_CONF >/dev/null 2>&1; then
   echo "Downloading a gdb config to make this nicer... (provides auto disassembly, functions: stepo, find_in_mem, etc)"
@@ -45,13 +46,18 @@ file=$1
 name="${file%%.*}"
 
 binfile="bin/$name.bin"
-elffile="bin/$name.elf"
-ofile="bin/$name.o"
+elffile="bin/$name.o.elf"
+bit16file="bin/$name.bits.asm"
 mkdir -p `dirname $binfile`
 
 if ! nasm $file -f bin -o $binfile "${@:2}"; then
   exit $?
 fi
+# Add "bits 16" as the first line which is only needed when making an elf file
+sed -e '1ibits 16\' $file > $bit16file
+# Make the debug symbols elf file. The extensions is needed for 16 bit to work.
+nasm $bit16file -f elf32 -F dwarf -g -w+gnu-elf-extensions -o $elffile "${@:2}"
+rm $bit16file
 
 if ! which qemu-system-i386 > /dev/null; then
   printf "\nYou need to install qemu-arch-extra to use the debugger\n"
@@ -60,6 +66,10 @@ fi
 
 qemu-system-i386 -s -S -drive file=$binfile,format=raw,if=ide &
 
+# Note: If you turn off the offset for the add-symbol-file command then gdb can
+# load the source code line numbers correctly but the fancy real-mode-gdb config
+# doesn't work because it actually understand the offset correctly.
 gdb -ix $GDB_REAL_CONF \
   -ex 'target remote localhost:1234' \
-  -ex 'b *0x7E00' -ex 'c' # break at the start of the code after the bootloader
+  -ex "add-symbol-file $elffile -s .text 0x7c00" \
+  -ex 'b *0x7E00' -ex 'c' -ex 'delete breakpoints' # break at the start of the code after the bootloader
