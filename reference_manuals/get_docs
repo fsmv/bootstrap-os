@@ -1,13 +1,17 @@
 BIOS_DOC_NAME=IBM_BIOS_Manual_1988.pdf
 VGA_DOC_NAME=IBM_VGA_Manual_1992.pdf
 
-wget -nc https://software.intel.com/sites/default/files/managed/39/c5/325462-sdm-vol-1-2abcd-3abcd.pdf -O Intel_Architecture_Manual.pdf
+echo -n "The official Intel Software Developer's Manual and the Optimization Manual can be downloaded from:"
+echo -n "https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html"
+echo -n "If the links haven't moved this script will download them automatically."
+
+wget -nc --no-check-certificate https://cdrdv2-public.intel.com/789583/325462-sdm-vol-1-2abcd-3abcd-4.pdf -O Intel_Software_Developers_Manual.pdf
 wget -nc http://bitsavers.trailing-edge.com/pdf/ibm/pc/ps2/15F0306_PS2_and_PC_BIOS_Interface_Technical_Reference_May88.pdf -O $BIOS_DOC_NAME
 
 echo -n "Do you want the Intel Optimization Manual? [y/n]: "
 read ans
 if [[ $ans =~ ^[Yy] ]]; then
-  wget -nc https://software.intel.com/sites/default/files/managed/9e/bc/64-ia-32-architectures-optimization-manual.pdf -O Intel_Optimization_Manual.pdf
+  wget -nc --no-check-certificate https://cdrdv2-public.intel.com/671488/248966-Software-Optimization-Manual-V1-048.pdf -O Intel_Optimization_Manual.pdf
 fi
 
 VGA_MANUAL=0
