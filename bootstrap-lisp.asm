@@ -37,8 +37,18 @@ extra_sectors_start:
 %ifdef DEBUG_TEXT
 debug_text:
 ;db "(define elm2 (lambda (l) (car (cdr l)))) (elm2 '(foo bar baz))", 0
-;db "(quote ((l) . (car (cdr l)))) \n '((l) . (car (cdr l)))", 0
-db "(define append1 (lambda (s t) (cond ((pair? s) (cons (car s) (append1 (cdr s) t))) (#t t) ))) (append1 '(this is a) '(test))", 0
+;db "(quote ((l) . (car (cdr l))))",0xA,'((l) . (car (cdr l)))", 0
+;db "(define append1 (lambda (s t) (cond ((pair? s) (cons (car s) (append1 (cdr s) t))) (#t t) ))) (append1 '(this is a) '(test))", 0
+db "(define append1 (lambda (s t)", 0xA,
+db "  (cond", 0xA
+db "    ((pair? s) (cons (car s) (append1 (cdr s) t)))",0xA
+db "    (#t t)",0xA
+db "  )",0xA
+db "))",0xA,0xA
+db "(define greeting (lambda name",0xA
+db "   (append1 '(Hello, ) name)",0xA
+db "))",0xA,0xA
+db "(greeting 'lisp)",0
 ;db "(eq? 'a 'a) (eq? 'a 'b) (eq? #t #t) (eq? () ()) (define foo '(test me)) (eq? foo foo) (eq? '(foo) '(foo))", 0
 %endif
 

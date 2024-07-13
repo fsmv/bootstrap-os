@@ -30,6 +30,7 @@
 %define START_COL 0x04
 %define END_ROW 0x16
 %define END_COL 0x4B
+%define ROW_COUNT (END_ROW-START_ROW+1) ; 0x15, 21
 %define ROW_LENGTH (END_COL-START_COL+1) ; 0x48, 72
 %define NUM_PRINTS_PER_ROW (ROW_LENGTH/5) ; 5 = 4 hex chars + 1 space
 
@@ -94,6 +95,7 @@ jmp typing_loop
 
 %else
 
+; Move the debug_text into the segment used for the text editor code
 mov di, debug_text
 copy_debug_text:
 mov al, [cs:di]
@@ -105,12 +107,26 @@ inc si
 jmp copy_debug_text
 done_copy_debug:
 
+; Print it nicely in the editor
+mov si, GAP_SIZE
+mov di, GAP_SIZE
+mov dh, START_ROW
+mov cx, ROW_COUNT
+call print_text
+
+; Scroll the printed text to the top corner where the cursor starts
+cmp cx, 0
+je .skip_scolling
+mov bx, cx
+mov al, 0
+mov dx, MAIN_TOP_LEFT
+call scroll_text
+.skip_scolling:
+
+; Reset and run the typing_loop
 xor di, di
 mov si, GAP_SIZE
-
-mov bp, si
-call scan_forward
-call print_line
+mov dx, MAIN_TOP_LEFT
 jmp set_cursor_and_continue
 
 %endif
@@ -267,19 +283,34 @@ prepare_and_run_code:
   xor di, di
   call run_code
   ; [es:di] is the output now
-  mov si, di ; set es:si to the same as es:di so the gap buffer code works
 
-  ; Print the output
+  mov si, di ; set es:si to the same as es:di so the gap buffer code works
+  mov dh, START_ROW
+  call print_text
+
+  ; Read keyboard, so they can read the output
+  mov ah, 0x00
+  int 0x16
+
+  jmp start_
+
+; Print a body of text into the text editor respecting newlines and the screen
+; boundaries. Always starts printing at the left edge.
+;
+; Args:
+;  [es:si] - the null terminated text to print
+;  cx      - max lines to print, 0 for unlimited
+; Returns:
+;  cx - the value is (input cx) - lines_printed
+;       So if you set cx non-zero this is the number of lines to scroll up
+print_text:
+  push cx
   xor cx, cx
 .print_loop:
-  cmp cx, 0
-  je .no_scroll
   mov al, 0
   mov bl, 1
   mov dx, MAIN_TOP_LEFT
   call scroll_text
-  .no_scroll:
-
 
   mov bp, si
   call scan_forward
@@ -318,21 +349,25 @@ prepare_and_run_code:
   inc si ; skip the \n
   ; fallthrough
   .set_marker:
-  ; TODO: wrong line?
+  mov dh, END_ROW
   call set_line_scroll_marker
 
   mov dh, END_ROW
   mov dl, START_COL
   call print_line
 
+  pop cx
+  dec cx ; Keep track of the lines printed
+
   cmp cx, 0
-  jne .print_loop
+  je .end
+  cmp byte [es:si], 0
+  je .end
+  push cx
+  jmp .print_loop
 
-  ; Read keyboard, so they can read the output
-  mov ah, 0x00
-  int 0x16
-
-  jmp start_
+  .end:
+  ret
 
 ; ==== typing_loop internal helpers that continue the loop ====
 
@@ -975,11 +1010,13 @@ convert_keyboard_layout:
   ret
 %endif
 
-; Shifts the text up or down one row in a block (leaving a blank line),
+; Shifts the text up or down N rows in a block (leaving a blank line),
 ; starting at the current cursor line (used to clear a line for save_new_line or
 ; join lines in backspace)
 ;
 ; Args:
+;   dx : The top left of the block to scroll, goes until the bottom right of the
+;        text area
 ;   al : 0 for up, non-zero for down
 ;   bl : number of rows to scroll
 scroll_text:
