@@ -80,11 +80,10 @@ run_code:
   mov ax, es
   add ax, 0x0100
   mov [cs:.output_seg], ax
+  mov word [cs:.output_addr], 0
 
-  cmp word [cs:env], 0
-  jne .keep_env
+  mov word [cs:env], 0
   call setup_env
-  .keep_env:
 
   .repl:
 
