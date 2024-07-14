@@ -19,6 +19,18 @@
 ; the start of this code (0x7C00)
 %define MAX_STACK_POINTER 0x2BFF
 
+; The size of a hard drive sector
+%define SECTOR_SIZE 0x200 ; 512 in decimal
+
+; Calculate the number of sectors a given span of code takes up from the passed
+; in label to the line NUM_SECTORS is applied on. This is useful for calculating
+; how much code to load off disk in your bootloader.
+;
+; The -1 is because we don't want the next sector until we have 512+1 bytes
+; e.g. for exactly 512 bytes we want 1 extra sector not 2.
+; The +1 is because int division does floor() and we want ceil().
+%define NUM_SECTORS(label) (($-label-1)/SECTOR_SIZE + 1)
+
 ; Jump past the BIOS Parameter block, which is needed for USB boots
 ;
 ; Apparently some BIOS implementations check for this instruction, so I think
@@ -29,7 +41,7 @@ nop ; Take up the remaning byte before the BIOS parameter block
 ; The BIOS parameter block. This stores information about the floppy disk the
 ; code is on. In USB boots like we're set up for, the BIOS just overwrites this
 ; section in memory with the right data.
-times 8 db 0 ; OEM Name. I've seen 'MSDOS5.0' here, not sure if that's needed
+db '  ASK  ',0 ; OEM Name (8 bytes). I've seen 'MSDOS5.0' here in some bootloaders.
 ; Space for the BPB
 times 0x33 db 0 
 start:

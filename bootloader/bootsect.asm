@@ -6,16 +6,10 @@
 ;
 ; After that it JMPs to _start
 
-; To Set NUM_EXTRA_SECTORS, put a label at the top of your code/data and paste:
+; To load more code from disk you need to set NUM_EXTRA_SECTORS,
+; put a label at the top of your code/data and paste:
 ;
 ; NUM_EXTRA_SECTORS: equ NUM_SECTORS(extra_sectors_start)
-
-%define SECTOR_SIZE 0x200 ; 512 in decimal
-; The -1 is because we don't want the next sector until we have 512+1 bytes
-; e.g. for exactly 512 bytes we want 1 extra sector not 2
-;
-; The +1 is because int division does floor() and we want ceil()
-%define NUM_SECTORS(label) (($-label-1)/SECTOR_SIZE + 1)
 
 %include "bootloader/bootsect-header.asm"
 
