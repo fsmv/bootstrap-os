@@ -1,5 +1,5 @@
 ; Provided under the MIT License: http://mit-license.org/
-; Copyright (c) 2020 Andrew Kallmeyer <ask@ask.systems>
+; Copyright (c) 2020 Andy Kallmeyer <ask@ask.systems>
 %define SECTOR_SIZE 0x200
 
 ; Segment register value (so the actual start is at the address 0x10*this)

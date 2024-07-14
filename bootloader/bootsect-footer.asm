@@ -1,5 +1,5 @@
 ; Provided under the MIT License: http://mit-license.org/
-; Copyright (c) 2020 Andrew Kallmeyer <ask@ask.systems>
+; Copyright (c) 2020 Andy Kallmeyer <ask@ask.systems>
 times 0x200-4-2-0x40-2-($-$$) db 0 ; Pad with zeros up to 512 bytes
 dd 0xDEADC0DE                      ; Windows reserved unique drive number
 dw 0x0000                          ; Just extra padding

@@ -1,5 +1,5 @@
 ; Provided under the MIT License: http://mit-license.org/
-; Copyright (c) 2020 Andrew Kallmeyer <ask@ask.systems>
+; Copyright (c) 2020 Andy Kallmeyer <ask@ask.systems>
 ;
 ; Many thanks to the BSD licensed
 ; tinylisp <https://github.com/Robert-van-Engelen/tinylisp>

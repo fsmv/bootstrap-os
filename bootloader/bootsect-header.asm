@@ -1,5 +1,5 @@
 ; Provided under the MIT License: http://mit-license.org/
-; Copyright (c) 2020 Andrew Kallmeyer <ask@ask.systems>
+; Copyright (c) 2020 Andy Kallmeyer <ask@ask.systems>
 
 ; All the voodoo required to boot on modern hardware. Mostly it is spaces and
 ; magic numbers for compatibilty with various extensions to BIOS that became
