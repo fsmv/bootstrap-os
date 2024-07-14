@@ -1,7 +1,7 @@
 # bootstrap-os
 
-A bootable x86 assembly editor that lets you run the code you type in.
-Enough to bootstrap anything with no other tools.
+A bootable x86 code editor that lets you run the code you type in directly on
+real hardware. Enough to bootstrap anything with no other tools.
 
 ![bootstrap-hex demo](images/v0.4-hex-2x.gif)
 
@@ -17,20 +17,28 @@ exactly that.
 
 ## Compatibility
 
+This code will work on any x86 CPU made between 2020 and 1981 with EGA support.
+So any modern x86 PC with BIOS support. I believe the earliest machine it would
+work on is the original 1981 IBM PC with a 1984 EGA card expansion.
+
+If it doesn't boot on your machine that supports BIOS, please let me know. I'd
+love to find out why.
+
+### Compatibility details
+
 This code is 16 bit real mode x86 assembly which Intel has kept available on all
-x86 CPUs since the original 8086 processor from 1976. It also depends on the IBM
-PC BIOS hardware interface standard from 1981 which modern computers still
-implement.  Sadly Intel has partially ended this incredible nealy 40 year
-backwards compatibility story by officially
+x86 CPUs since the original 8086 processor from 1976.
+
+It also depends on the IBM PC BIOS hardware interface standard from 1981 which
+modern computers still implement. Sadly Intel has partially ended this
+incredible nealy 40 year backwards compatibility story by officially
 [ending support for BIOS](https://www.bleepingcomputer.com/news/hardware/intel-plans-to-end-legacy-bios-support-by-2020/)
 as of 2020, so now there are some machines on the market that only support UEFI
 booting.
 
-I believe the earliest machine this code would work on is the original 1981 IBM
-PC with a 1984 EGA card expansion.
-
-If it doesn't boot on your machine that supports BIOS, please let me know. I'd
-love to find out why.
+Finally it depends on EGA, the Enhanced Graphics Adapter card API, because it
+uses the 80x25 16 colors text video mode which was added with that card. This is
+the predicessor to CGA and VGA.
 
 ## Why?
 
@@ -68,7 +76,17 @@ for a while.
 #### Linux / MacOS
 
 1. Install `qemu` and `nasm` with your package manager of choice.
-2. `./boot bootstrap-hex.asm`
+2. `./boot bootstrap-lisp.asm`
+
+#### Debugging on Linux / MacOS
+
+You can also run `./debug bootstrap-lisp.asm` to attach gdb to qemu with a
+special config for 16 bit real mode and it has symbols properly loaded and
+everything.
+
+In `gdbconf/gdbinit_real_mode.txt` several new gdb commands are defined. The
+most important is `stepo` which steps over a call instruction skipping the body of
+the call, but you can open up that file and try out the other commands too.
 
 #### Windows
 
@@ -77,11 +95,7 @@ for a while.
  3. Set the PATH variable:
     1. In the start menu, search for and open the environment variables editor 
     2. Choose either the user or system-wide Path variable and add both `C:\Program Files\NASM` & `C:\Program Files\qemu`
- 4. `boot.bat bootstrap-hex.asm` (alternatively you can use the bash script in the git bash prompt)
-
-# TODO: version is too old or something, it doesn't support -ix
-If you want to use the debug shell script in the MinGW git bash prompt you can
-install gdb for it with this installer: https://sourceforge.net/projects/mingw/files/MinGW/Extension/gdb/Release%20Candidate_%20gdb-6.3/gdb-6.3-2.exe/download
+ 4. `boot.bat bootstrap-lisp.asm` (alternatively you can use the bash script in the git bash prompt)
 
 ## Reference Manuals
 
