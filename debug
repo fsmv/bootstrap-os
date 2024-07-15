@@ -42,7 +42,7 @@ if ! stat $GDB_REAL_CONF >/dev/null 2>&1; then
     clear *$_nextaddress' $GDB_REAL_CONF
 fi
 
-file=$1
+file="${@: -1}"
 name="${file%%.*}"
 
 binfile="bin/$name.bin"
@@ -50,13 +50,13 @@ elffile="bin/$name.o.elf"
 bit16file="bin/$name.bits.asm"
 mkdir -p `dirname $binfile`
 
-if ! nasm $file -f bin -o $binfile "${@:2}"; then
+if ! nasm $file -f bin -o $binfile ${@:1:$(($#-1))}; then
   exit $?
 fi
 # Add "bits 16" as the first line which is only needed when making an elf file
 sed -e '1ibits 16\' $file > $bit16file
 # Make the debug symbols elf file. The extensions is needed for 16 bit to work.
-nasm $bit16file -f elf32 -F dwarf -g -w+gnu-elf-extensions -o $elffile "${@:2}"
+nasm $bit16file -f elf32 -F dwarf -g -w+gnu-elf-extensions -o $elffile ${@:1:$(($#-1))}
 rm $bit16file
 
 if ! which qemu-system-i386 > /dev/null; then

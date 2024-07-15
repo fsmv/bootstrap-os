@@ -5,9 +5,9 @@ if [ "$#" -eq 0 ]; then
     exit 1
 fi
 
-file=$1
+file=${@: -1}
 name="${file%%.*}"
 binfile="bin/$name.bin"
 
 mkdir -p `dirname $binfile`
-nasm $file -f bin -o $binfile "${@:2}" && qemu-system-x86_64 -drive file=$binfile,format=raw,if=ide
+nasm $file -f bin -o $binfile ${@:1:$(($#-1))} && qemu-system-x86_64 -drive file=$binfile,format=raw,if=ide
