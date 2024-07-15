@@ -13,6 +13,9 @@
 ;
 ; See: https://wiki.osdev.org/Memory_Map_(x86)
 %define LAST_SEGMENT 0x70000 
+; The distance between non-overlapping segment in the segment register address
+; space (i.e. it's 0x10000 bytes but you only add 0x100 to the segment register)
+%define NEXT_SEGMENT 0x100
 ; The last valid sp value given that we set ss to 0x0050
 ;
 ; This puts the stack in the ~30k area of free memory between the BIOS data and

@@ -56,17 +56,14 @@ db "(greeting 'lisp)",0
 ;
 ; Input:
 ;
-; [ds:si] - the code to run
-; [es:di] - an unused memory block
-;
-; Output:
-;
-; [es:di] - The evaluated output buffer (changed from the input)
+; [es:si] - the code to run
+; [ds:0]  - an unused memory block
+; di      - output segment address; starts at 0 offset; null terminated
 ;
 ; Global register variables:
 ;
-; [ds:si] - the code input pointer (null terminated)
-; [es:di] - The object stack pointer, holds the typed objects. The low end of the es memory block.
+; [es:si] - the code input pointer (null terminated)
+; [ds:di] - The object stack pointer, holds the typed objects. The low end of the ds memory block.
 ;
 ; The object stack is a list of 2 word objects. The first word is the type and
 ; the second word is the value.
@@ -75,25 +72,27 @@ db "(greeting 'lisp)",0
 ;
 ; All of the lisp REPL functions required all 4 memory segments to be
 ; unmodified. There is no more available address space to use more memory
-; without using extended pointers in the lisp stack and moving the es segment
+; without using extended pointers in the lisp stack and moving the ds segment
 ; around as needed.
 ;
 ; Each segment is limited to 0xFFFF bytes or 64k
 ;
-;  es - The lisp memory, a stack of type tagged objects with internal pointers
-;  ds - the input code, we point directly into the code for the symbol strings
+;  ds - The lisp memory, a stack of type tagged objects with internal pointers
+;  es - the input code, we point directly into the code for the symbol strings
 ;       instead of copying them into the lisp memory
 ;  cs - The code segment, builtin strings are stored here (and the interpreter)
 ;  ss - the usual stack, needed for function calls in the interpreter
 run_code:
-  ; set the output location for print just after the lisp env data
-  mov ax, es
-  add ax, 0x0100
-  mov [cs:.output_seg], ax
+  ; save the output location
+  mov [cs:.output_seg], di
   mov word [cs:.output_addr], 0
+  ; Resetting the stack to the env tip acts as a garbage collector
+  mov di, [cs:env]
 
-  mov word [cs:env], 0
+  test di, di
+  jnz .env_exists
   call setup_env
+  .env_exists:
 
   .repl:
 
@@ -101,11 +100,6 @@ run_code:
 
   cmp cx, 0
   ja .not_end
-  ; set the output buffer as the returned output [es:di]
-  mov es, [cs:.output_seg]
-  mov di, [cs:.output_addr]
-  mov byte [es:di], 0 ; null terminate the output
-  xor di, di
   ret
   .not_end:
 
@@ -114,41 +108,26 @@ run_code:
   mov cx, [cs:env]
   call eval
 
+  ; Print the eval result to the output buffer location
+  push es
   push di
-  call print ; print the eval result to the end of the lisp stack
+  push si
+  mov si, es
+  mov di, [cs:.output_addr]
+  mov bx, [cs:.output_seg]
+  mov es, bx
+  call print
   ; TODO: check for overflow in print
-
-  ; Restore di and calculate chars printed
-  mov cx, di
-  pop di
-  sub cx, di
-
-  push ds ; save ds which we'll use for the output buffer
-  push si ; save the code input pointer
-  mov ds, [cs:.output_seg]
-  mov si, [cs:.output_addr]
-
-  ; Copy cx chars from [es:di] into [ds:si], and don't clobber di
-  mov bx, di
-  .copy_print_buf:
-  test cx, cx
-  jz .end_print_buf
-  mov al, [es:bx]
-  mov [ds:si], al
-  inc bx
-  inc si
-  dec cx
-  jmp .copy_print_buf
-  .end_print_buf:
-
-  ; Add a new line at the end
-  mov byte [ds:si], `\n`
-  inc si
-  mov [cs:.output_addr], si ; save the end of the output
-
-  ; restore the code input location
+  ; Add a newline at the end and null terminate it
+  mov byte [es:di], `\n`
+  inc di
+  mov byte [es:di], 0
+  mov [cs:.output_addr], di ; save the end of the output
+  ; Restore ds:di for the next lisp expression
   pop si
-  pop ds
+  pop di
+  pop bx
+  mov es, bx
 
   jmp .repl
 
@@ -157,12 +136,11 @@ run_code:
 .output_seg: dw 0
 .output_addr: dw 0
 
+; Constants with subvalues so I can type objarg2.type
 objsize: equ 4
-
 objarg1:
 .value: equ 4
 .type: equ 2
-
 objarg2:
 .value: equ 8
 .type: equ 6
@@ -173,9 +151,9 @@ objarg2:
 ; The values are bit flags and some flags apply to multiple types. For example:
 ; a CLOS counts as a CONS, so car and cdr work on CLOS.
 type:
-.ATOM:    equ 0x0001 ; String pointer on ds, eg [ds:val]; dh is set to the length.
+.ATOM:    equ 0x0001 ; String pointer on es, eg [es:val]; dh is set to the length.
 .CSATOM:  equ 0x0011 ; String pointer on cs, eg [cs:val]; null terminated.
-.CONS:    equ 0x0002 ; Pointer on es; eg [es:val-4] is the second elm [es:val-8] is the first elm
+.CONS:    equ 0x0002 ; Pointer on ds; eg [ds:val-4] is the second elm [ds:val-8] is the first elm
 .NIL:     equ 0x0004 ; Value is always 0
 .INT:     equ 0x0008 ; Value is a 16 bit integer
 .PRIM:    equ 0x0020 ; Function pointer on cs; eg call [cs:val]
@@ -549,12 +527,12 @@ cons:
 ;   [bp+4], [bp+2] - second object element
 _cons:
   ; Push the two values of the CONS pair
-  mov word [es:di+0], ax
-  mov word [es:di+2], dx
+  mov word [ds:di+0], ax
+  mov word [ds:di+2], dx
   mov ax, [bp+objarg1.value]
   mov dx, [bp+objarg1.type]
-  mov word [es:di+4], ax
-  mov word [es:di+6], dx
+  mov word [ds:di+4], ax
+  mov word [ds:di+6], dx
   add di, 8
 
   mov ax, di
@@ -571,12 +549,12 @@ _cons:
 reverse_cons:
   mov bp, sp
   ; Push the two values of the CONS pair
-  mov word [es:di+4], ax
-  mov word [es:di+6], dx
+  mov word [ds:di+4], ax
+  mov word [ds:di+6], dx
   mov ax, [bp+objarg1.value]
   mov dx, [bp+objarg1.type]
-  mov word [es:di+0], ax
-  mov word [es:di+2], dx
+  mov word [ds:di+0], ax
+  mov word [ds:di+2], dx
   add di, 8
 
   mov ax, di
@@ -600,8 +578,8 @@ car:
   jz _err
 
   mov bx, ax
-  mov ax, [es:bx-8]
-  mov dx, [es:bx-6]
+  mov ax, [ds:bx-8]
+  mov dx, [ds:bx-6]
   ret
 
 ; Return the second element cons, which is the tail of a linked list after
@@ -617,8 +595,8 @@ cdr:
   jz _err
 
   mov bx, ax
-  mov ax, [es:bx-4]
-  mov dx, [es:bx-2]
+  mov ax, [ds:bx-4]
+  mov dx, [ds:bx-2]
   ret
 
 ; Input:
@@ -702,8 +680,8 @@ _atom_atom_equal:
   test dh, dh
   jz .equal
 
-  mov byte ah, [ds:bp]
-  mov byte al, [ds:bx]
+  mov byte ah, [es:bp]
+  mov byte al, [es:bx]
   cmp ah, al
   jne .not_equal
 
@@ -746,7 +724,7 @@ _csatom_atom_equal:
   je .not_equal ; since it was not the end of the ATOM
 
   mov byte ah, [cs:bp] ; CSATOM char
-  mov byte al, [ds:bx] ; ATOM char
+  mov byte al, [es:bx] ; ATOM char
   cmp ah, al
   jne .not_equal
 
@@ -868,18 +846,18 @@ lookup_env:
 ; Length of the token may be 0 if it was the end of the code.
 ;
 ; Input:
-;   [ds:si] - the code input
+;   [es:si] - the code input
 ;
 ; Output:
-;   [ds:bx] - the token string
+;   [es:bx] - the token string
 ;   cx      - length of the token
 scan:
   xor cx, cx
 
   .skip_spaces:
-  cmp byte [ds:si], ' '
+  cmp byte [es:si], ' '
   ja .past_spaces ; all ascii chars less than ' ' are whitespace
-  cmp byte [ds:si], 0
+  cmp byte [es:si], 0
   je .at_end
   inc si
   jmp .skip_spaces
@@ -887,21 +865,21 @@ scan:
   .past_spaces:
   mov bx, si
 
-  cmp byte [ds:si], '('
+  cmp byte [es:si], '('
   je .special_char
-  cmp byte [ds:si], ')'
+  cmp byte [es:si], ')'
   je .special_char
-  cmp byte [ds:si], "'"
+  cmp byte [es:si], "'"
   je .special_char
 
   .symbol_loop:
   inc cx
   inc si
-  cmp byte [ds:si], '('
+  cmp byte [es:si], '('
   je .symbol_done
-  cmp byte [ds:si], ')'
+  cmp byte [es:si], ')'
   je .symbol_done
-  cmp byte [ds:si], ' '
+  cmp byte [es:si], ' '
   jbe .symbol_done
   jmp .symbol_loop
   .symbol_done:
@@ -920,21 +898,21 @@ scan:
 ; Assumes that the starting ( was already scanned, and immediately skips it.
 ;
 ; Input:
-;   [ds:bx] - The scanned ( token
+;   [es:bx] - The scanned ( token
 ;   cx      - 1, the length of the scanned ( token
 ;
 ; Output:
 ;   ax, dx - The object pointing to the parsed list or cons
 _parse_list:
   call scan ; read the element
-  cmp byte [ds:bx], ')'
+  cmp byte [es:bx], ')'
   jne .not_nil
   mov ax, 0
   mov dx, type.NIL
   ret
   .not_nil:
 
-  cmp byte [ds:bx], '.'
+  cmp byte [es:bx], '.'
   jne .not_cons
   cmp cx, 1
   jne .not_cons
@@ -962,23 +940,23 @@ _parse_list:
 ; scanning when needed internally, not just the first token.
 ;
 ; Input:
-;   [ds:bx] - The first token to parse (result from scan)
+;   [es:bx] - The first token to parse (result from scan)
 ;   cx      - The length of the first token (result from scan)
 ;
 ; Output:
 ;   ax, dx - The object pointing to the parsed lisp expression (not always a cons)
 parse:
-  cmp byte [ds:bx], ')'
+  cmp byte [es:bx], ')'
   jne .not_end_error
   ret ; TODO: error
   .not_end_error:
 
-  cmp byte [ds:bx], '('
+  cmp byte [es:bx], '('
   jne .not_list
   jmp _parse_list ; takes over our stack frame
   .not_list:
 
-  cmp byte [ds:bx], "'"
+  cmp byte [es:bx], "'"
   jne .not_quote
   ; Return (quote . (parse() . nil)) i.e. (quote parse())
   ; Inner pair (parse() . nil)
@@ -998,9 +976,9 @@ parse:
   ret
   .not_quote:
 
-  cmp byte [ds:bx], '0'
+  cmp byte [es:bx], '0'
   jb .not_int
-  cmp byte [ds:bx], '9'
+  cmp byte [es:bx], '9'
   ja .not_int
   ret ; TODO
   .not_int:
@@ -1279,7 +1257,7 @@ eval:
 ;
 ; Input:
 ;   ax      - the word to print
-;   [es:di] - the output buffer
+;   [ds:di] - the output buffer
 _write_hex_word:
   mov cl, ah
   shr cl, 4
@@ -1358,6 +1336,7 @@ _print_list:
 ; Input:
 ;   ax, dx  - the lisp object to print
 ;   [es:di] - the output string location
+;   si      - the input code segment (needed for ATOM strings)
 ;
 ; Output:
 ;   [es:di] - one past the end of the string printed
@@ -1386,6 +1365,10 @@ print:
 
   test dx, type.ATOM
   jz .not_atom
+  ; ATOM strings are in the input code location, we need to swap out lisp stack
+  ; segment temporarily so we can use more memory.
+  push ds
+  mov ds, si
   mov bx, ax
   .copy_str_len:
   test dh, dh
@@ -1397,6 +1380,9 @@ print:
   dec dh
   jmp .copy_str_len
   .end_str_len:
+  ; restore the lisp stack
+  pop bx
+  mov ds, bx
   ret
   .not_atom:
 

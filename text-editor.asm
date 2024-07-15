@@ -1,9 +1,34 @@
 ; Provided under the MIT License: http://mit-license.org/
 ; Copyright (c) 2020 Andy Kallmeyer <ask@ask.systems>
 
+; This is a text editor (uses a gap buffer) which calls the run_code function
+; when you press ctrl+D. You use it by %define RUN_CODE before you include the
+; text editor, and then define your run_code function after that.
+;
+; You may also define a debug_text label pointing to a null terminated string
+; which will be pre-loaded into the editor on startup if DEBUG_TEXT is defined.
+;
+; Search for run_code: below to see the API for it.
+
+
+; Color byte is: bg-intensity,bg-r,bg-g,bg-b ; fg-intensity,fg-r,fg-g,fg-b
+%define MAIN_COLOR 0x17
+%define BORDER_COLOR 0x97
+%define ERROR_COLOR 0x47
+
+; Note that the code requires that there's at least one character of border
+%define MAIN_TOP_LEFT 0x0204 ; row = 2,  col = 2
+%define MAIN_BOTTOM_RIGHT 0x164B ; row = 22, col = 79-2
+%define START_ROW 0x02
+%define START_COL 0x04
+%define END_ROW 0x16
+%define END_COL 0x4B
+
 ; Segment register value (so the actual start is at the address 0x10*this)
 ; This is the first sector after the editor's code
 %define USER_CODE_LOC (CODE_SEGMENT+(SECTOR_SIZE/0x10)*(NUM_EXTRA_SECTORS+1))
+%define COMPILER_DATA_LOC USER_CODE_LOC+NEXT_SEGMENT
+%define COMPILER_OUT_LOC COMPILER_DATA_LOC+NEXT_SEGMENT
 ; Maxiumum size for the code buffer
 ;
 ; There's a lot of extra memory still after this but I don't want to move around
@@ -18,18 +43,6 @@
 %define RIGHT_ARROW 0x4D00
 %define EOT 0x2004 ; Ctrl+D
 
-; Color byte is: bg-intensity,bg-r,bg-g,bg-b ; fg-intensity,fg-r,fg-g,fg-b
-%define MAIN_COLOR 0x17
-%define BORDER_COLOR 0x97
-%define ERROR_COLOR 0x47
-
-; Note that the code requires that there's at least one character of border
-%define MAIN_TOP_LEFT 0x0204 ; row = 2,  col = 2
-%define MAIN_BOTTOM_RIGHT 0x164B ; row = 22, col = 79-2
-%define START_ROW 0x02
-%define START_COL 0x04
-%define END_ROW 0x16
-%define END_COL 0x4B
 %define ROW_COUNT (END_ROW-START_ROW+1) ; 0x15, 21
 %define ROW_LENGTH (END_COL-START_COL+1) ; 0x48, 72
 %define NUM_PRINTS_PER_ROW (ROW_LENGTH/5) ; 5 = 4 hex chars + 1 space
@@ -69,6 +82,25 @@ mov dx, MAIN_TOP_LEFT
 xor bh, bh ; page 0
 int 0x10
 
+; Memory map:
+;
+; Each segment gets a full non-overlaping 64k block of memory and we don't move
+; the segment so 64k is the limit for each part.
+;
+; SS: 0x050
+;   - Leaves ~30k for the stack between 0x0500 and 0x7C00, the start of the code.
+; CS: CODE_SEGMENT (0x7C0)
+;   - The assembly code
+; ES: USER_CODE_LOC or COMPILER_OUT_LOC if we're printing the output
+;   - The code that the user types into the editor
+;   - The printing routines all use es so we use es for printing
+; DS: COMPILER_DATA_LOC
+;   - Extra memory passed to the plugin program that runs the code you typed.
+;     Only set when ctrl+D is pressed and passed to the plugin.
+;   - Normally the default for memory address reads and our bootloader leaves
+;     this set to CODE_SEGMENT for that. But this code alwasy uses cs: to
+;     reference strings stored in the binary.
+
 ; --- typing_loop global register variables ---
 ;
 ; The user code is an (almost) contiguous null-terminated buffer starting at
@@ -85,6 +117,8 @@ int 0x10
 ; Additonally cx,bp are callee save while ax,bx are caller save (clobbered)
 mov ax, USER_CODE_LOC
 mov es, ax
+mov ax, COMPILER_DATA_LOC
+mov ds, ax
 xor di, di
 mov si, GAP_SIZE
 mov byte [es:si], 0 ; null-terminate the string
@@ -155,28 +189,28 @@ num_debug_prints: db 0x00
 ; cx = two bytes to write at current cursor
 ; clobbers ax, and bx
 debug_print_hex:
-push dx ; Save the cursor position
+  push dx ; Save the cursor position
 
-; One row above the top of the text area
-mov dl, START_COL
-xor dh, dh
+  ; One row above the top of the text area
+  mov dl, START_COL
+  xor dh, dh
 
-; Calculate where to print based on number of words we have printed
-xor ax, ax
-mov byte al, [num_debug_prints]
-mov bl, NUM_PRINTS_PER_ROW
-div bl
-; al = (num_debug_prints)/(num_per_row); ah = (num_debug_prints) % (num_per_row)
+  ; Calculate where to print based on number of words we have printed
+  xor ax, ax
+  mov byte al, [num_debug_prints]
+  mov bl, NUM_PRINTS_PER_ROW
+  div bl
+  ; al = (num_debug_prints)/(num_per_row); ah = (num_debug_prints) % (num_per_row)
 
-add dh, al ; row += the row to print on
+  add dh, al ; row += the row to print on
 
-; Reset the count so we overwrite at the beginning
-cmp dh, START_ROW
-jne .no_reset
-mov byte [num_debug_prints], 0
-xor ax, ax
-xor dh, dh
-.no_reset:
+  ; Reset the count so we overwrite at the beginning
+  cmp dh, START_ROW
+  jne .no_reset
+  mov byte [num_debug_prints], 0
+  xor ax, ax
+  xor dh, dh
+  .no_reset:
 
   inc byte [num_debug_prints] ; remember that we printed
 
@@ -204,6 +238,7 @@ xor dh, dh
 
   ret
 
+user_code_start: dw 0
 
 ; Note: all of the jumps in typing_loop loop back here (except for run_code)
 ;
@@ -241,6 +276,16 @@ typing_loop:
   jmp typing_loop ; Doesn't match anything above
 
 %ifndef RUN_CODE
+; This is run when ctrl+D is pressed and passed the code and memory locations
+; for compiler/interpreter purposes and finally a separate output text buffer
+; which will be displayed in the editor after run_code returns.
+;
+; Input:
+;   [ds:si] - the code to run
+;   [es:0]  - the code runner memory block.
+;             This memory is preserved between successive runs of run_code.
+;   di      - output segment address; starts at 0 offset; null terminated
+;             This memory is preserved between successive runs of run_code.
 run_code:
   mov byte [es:di], "!"
   ret
@@ -270,29 +315,45 @@ prepare_and_run_code:
   xor bh, bh
   int 0x10
 
-  ; set the source [ds:si] for the assembler
-  mov ax, es
-  mov ds, ax
-  xor si, si
-  ; Set the destination [es:di] for the assembler output (right after the code text)
-  mov ax, es
-  shr di, 4 ; segment registers are address/0x10
-  add ax, di
-  inc ax ; +1 since the shift rounds down and we don't want to overlap
-  mov es, ax
-  xor di, di
-  call run_code
-  ; [es:di] is the output now
+  push si
 
-  mov si, di ; set es:si to the same as es:di so the gap buffer code works
+  ; source code is [es:si], dest data is [ds:di]
+  ; set the source [es:si] for the assembler
+  mov di, COMPILER_OUT_LOC
+  mov si, [cs:user_code_start]
+  call run_code
+
+  mov ax, COMPILER_OUT_LOC
+  mov es, ax
+  xor si, si
+  xor di, di ; set es:si to the same as es:di so the gap buffer code works
   mov dh, START_ROW
   call print_text
+
+  ; Reset the state to continue the editor
+  ;
+  ; TODO: make an option to save the input text instead of resetting the buffer
+  ; with an empty null terminated string. Not sure what I want the controls to
+  ; be. Would probably want to reset the lisp memory too at that point.
+  pop si
+  mov [cs:user_code_start], si
+  mov di, si
+  add si, GAP_SIZE
+  mov byte [es:si], 0 ; null-terminate the string
+  mov ax, USER_CODE_LOC
+  mov es, ax
 
   ; Read keyboard, so they can read the output
   mov ah, 0x00
   int 0x16
 
-  jmp start_
+  ; Clear the text from the screen
+  mov dx, MAIN_TOP_LEFT
+  mov bl, END_COL-START_COL
+  call scroll_text
+
+  mov dx, MAIN_TOP_LEFT
+  jmp set_cursor_and_continue
 
 ; Print a body of text into the text editor respecting newlines and the screen
 ; boundaries. Always starts printing at the left edge.
@@ -540,8 +601,8 @@ save_new_line:
   jmp set_cursor_and_continue
 
 backspace:
-  test di, di ; Can't delete past the beginning of the buffer
-  jz typing_loop
+  cmp di, [cs:user_code_start] ; Can't delete past the beginning of the buffer
+  je typing_loop
 
   lea bx, [si-1]
   cmp di, bx ; disallow typing anywhere when we're out of buffer space
@@ -560,8 +621,8 @@ backspace:
   dec di ; delete the unseen char by pushing it into the gap
 
   ; Remove the scroll marker if we just hit the beginning of the line
-  test di, di
-  jz .clear_left_marker
+  cmp di, [cs:user_code_start]
+  je .clear_left_marker
   cmp byte [es:di-1], `\n`
   je .clear_left_marker
   jmp typing_loop
@@ -680,8 +741,8 @@ _join_lines:
 .paint_joined_line:
   ; Need to skip scan_backward if we're at di == 0 because we can't check di-1
   xor cx, cx ; if the check below passes, we have length 0
-  test di, di
-  jz .print_the_tail
+  cmp di, [cs:user_code_start]
+  je .print_the_tail
 
   ; Setup the new current line
   lea bp, [di-1]
@@ -747,8 +808,8 @@ _join_lines:
 ;  - Calls move_up when moving to the next line
 move_left:
   ; Don't do anything if we're already at the beginning of the buffer
-  test di, di
-  jz typing_loop
+  cmp di, [cs:user_code_start]
+  je typing_loop
 
   dec di
   dec si
@@ -785,8 +846,8 @@ _scroll_line_left:
   call print_line
 
   ; Check if we're at the start of the line and clear the left marker if so
-  test di, di
-  jz .at_beginning_of_line
+  cmp di, [cs:user_code_start]
+  je .at_beginning_of_line
   cmp byte [es:di-1], `\n` ; -1 is safe because of the above check
   je .at_beginning_of_line
   jmp .keep_marker
@@ -798,8 +859,8 @@ _scroll_line_left:
 
 _prev_line:
   xor cx, cx ; line length is 0 if we're at di==0
-  test di, di ; skip scanning if the first char is \n
-  jz .move_up
+  cmp di, [cs:user_code_start] ; skip scanning if the first char is \n
+  je .move_up
 
   lea bp, [di-1] ; scan from the char before the \n
   call scan_backward
