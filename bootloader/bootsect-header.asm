@@ -9,13 +9,16 @@
 
 %define CODE_SEGMENT 0x7C0 ; This is where the BIOS always loads the code
 ; The last segment in the unmapped memary block after 0x7C0 that can be used
-; with the full 16bit address range (0x7FFFF is the last safe address)
+; with the full 16bit address range (0x7FFFF is the last safe address).
+;
+; If you set a segment register higher than this value you might overflow into
+; the reserved memory areas.
 ;
 ; See: https://wiki.osdev.org/Memory_Map_(x86)
-%define LAST_SEGMENT 0x70000 
+%define LAST_SEGMENT 0x7000
 ; The distance between non-overlapping segment in the segment register address
-; space (i.e. it's 0x10000 bytes but you only add 0x100 to the segment register)
-%define NEXT_SEGMENT 0x100
+; space (i.e. it's 0x10000 bytes but you only add 0x1000 to the segment register)
+%define NEXT_SEGMENT 0x1000
 ; The last valid sp value given that we set ss to 0x0050
 ;
 ; This puts the stack in the ~30k area of free memory between the BIOS data and
