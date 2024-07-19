@@ -1,15 +1,35 @@
-; This assembles to a 512 byte BIOS bootloader sector
+; This assembles to a 512 byte BIOS bootloader sector that works on real
+; hardware as long as it has an x86 CPU with BIOS support.
 ;
 ; Loads NUM_EXTRA_SECTORS of code after the bootsector on disk into memory
-; directly after the bootsector code. Also set the video mode and some nice text
-; mode defaults.
+; directly after the bootsector code. Also sets the video mode to some nice
+; text mode defaults and sets up the stack and other segment registers.
 ;
 ; After that it JMPs to _start
 
-; To load more code from disk you need to set NUM_EXTRA_SECTORS,
-; put a label at the top of your code/data and paste:
+; To use this:
 ;
-; NUM_EXTRA_SECTORS: equ NUM_SECTORS(extra_sectors_start)
+;  1. Include this bootloader/bootsect.asm file at the top of your code before
+;     any other bytes (this file includes the header and footer)
+;  2. Put a label at the top right below the include of this file Ex:
+;     extra_sectors_start:
+;  3. Paste at the bottom after all of your application code is written/included
+;
+;       NUM_EXTRA_SECTORS: equ NUM_SECTORS(extra_sectors_start)
+;
+; You can write all of your code with org 0 (the default) since we set cs so
+; that the bootloader code and then your code will start at 0.
+;
+; This will only work up to 64k of code. Once you're beyond that size you will
+; need to set the cs register correctly as you go because it doesn't all fit
+; within the 16 bit address space if you keep cs fixed. You would have to
+; separate your code into 64k sized modules so internal references work and move
+; cs as needed to call the different modules, or implement some other kind of
+; dynamic loading of chunks of code system.
+;
+; So NUM_EXTRA_SECTORS can be at most 0x7F. I can't add a %if %error %endif
+; check here because nasm requires that to go after NUM_EXTRA_SECTORS is
+; defined.
 
 %include "bootloader/bootsect-header.asm"
 

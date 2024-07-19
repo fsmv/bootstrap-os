@@ -26,9 +26,17 @@
 
 ; Segment register value (so the actual start is at the address 0x10*this)
 ; This is the first sector after the editor's code
+;
+; This offset won't be exactly a multiple of NEXT_SEGMENT but it is at most
+; NEXT_SEGMENT because we don't have a dynamic code segment switching setup so
+; NUM_EXTRA_SECTORS is limited to 0x7F. So since there are 6
+; non-overlapping complete segments available and we're only using 4 here
+; (including the code segment), it's impossible for COMPILER_OUT_LOC to be
+; greater than LAST_SEGMENT.
 %define USER_CODE_LOC (CODE_SEGMENT+(SECTOR_SIZE/0x10)*(NUM_EXTRA_SECTORS+1))
 %define COMPILER_DATA_LOC USER_CODE_LOC+NEXT_SEGMENT
 %define COMPILER_OUT_LOC COMPILER_DATA_LOC+NEXT_SEGMENT
+
 ; Maxiumum size for the code buffer
 ;
 ; There's a lot of extra memory still after this but I don't want to move around
