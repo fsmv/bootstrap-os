@@ -370,68 +370,68 @@ prepare_and_run_code:
 ;  [es:si] - the null terminated text to print
 ;  cx      - max lines to print, 0 for unlimited
 ; Returns:
-;  cx - the value is (input cx) - lines_printed
+;  cx - the number of lines remaining in the max
+;       (or negative lines printed if cx was 0)
+;       i.e. cx = (input cx) - lines_printed
 ;       So if you set cx non-zero this is the number of lines to scroll up
 print_text:
   push cx
-  xor cx, cx
+  jmp .skip_scroll
 .print_loop:
+  ; scroll up by one line to make room for the next line to print, do this at
+  ; the top so it doesn't happen after the last line
   mov al, 0
   mov bl, 1
   mov dx, MAIN_TOP_LEFT
   call scroll_text
+  .skip_scroll:
 
+  ; Find the end of the line
   mov bp, si
   call scan_forward
 
   ; Check if we found the end of the line, and set the right scroll marker
   mov ax, 0x0000 ; scroll markers: set to off ; right margin
   cmp cx, ROW_LENGTH
-  jbe .found_end
-
-  ; Move si forward to the start of the next line
-  push bp
-  .next_line_loop:
-  call scan_forward
-  cmp cx, ROW_LENGTH
-  jbe .found_next_line
-  add si, ROW_LENGTH
-  add bp, ROW_LENGTH
-  jmp .next_line_loop
-  .found_next_line:
-  add si, cx
-  cmp byte [cs:bp], 0
-  je .end_of_file
-  inc si ; skip the \n
-  .end_of_file:
-  pop bp
-
+  jbe .shorter_than_row
   mov cx, ROW_LENGTH ; only print up to the edge of the screen
   mov ax, 0x0100 ; scroll markers: set to on ; right margin
-  jmp .set_marker
-
-  .found_end:
-  ; move si to the end of the next line
-  add si, cx
-  cmp byte [es:si], 0
-  je .set_marker
-  inc si ; skip the \n
   ; fallthrough
-  .set_marker:
+  .shorter_than_row:
+
+  ; move bp to the end of the next line
+  cmp byte [es:bp], 0
+  je .end_of_buffer
+  inc bp ; skip the \n
+  ; fallthrough
+
+  .end_of_buffer:
+  ; ax was set above
   mov dh, END_ROW
   call set_line_scroll_marker
 
+  ; swap bp and si
+  ; after: bp = beginning of line, si = start of next line
+  xor si, bp
+  xor bp, si
+  xor si, bp
+
   mov dh, END_ROW
   mov dl, START_COL
-  call print_line
+  call print_line ; prints cx chars from bp
 
+  ; Keep track of the lines printed
   pop cx
-  dec cx ; Keep track of the lines printed
+  dec cx
 
+  ; If we have run out of our line limit, stop
+  ; If cx was 0 for unlimited then this will be negative and not equal to 0
   cmp cx, 0
   je .end
-  cmp byte [es:si], 0
+  ; If we hit the end of the buffer, stop
+  cmp byte [es:bp], 0
   je .end
+  ; If we're still looping push line_count again so we can pop it above
   push cx
   jmp .print_loop
 
@@ -695,13 +695,11 @@ _repaint_bottom_line:
   push dx
   ; Note: the first iteration will just be the tail of the new joined line
   mov bp, si
-  xor cx, cx ; make the add do nothing the first time
   call scan_forward ; skip to the end of the new combined line
   .next_line_loop:
   cmp dh, END_ROW
   je .at_last_line
 
-  add bp, cx ; skip to the line ending from the previous scan_forward
   ; If we hit the end of the code before the END_ROW, we didn't have a line cut off
   cmp byte [es:bp], 0
   je .no_line_to_print
@@ -1177,11 +1175,11 @@ scan_backward:
 ; Stop at '\n' or the end of the buffer
 ;
 ; Args:
-;  - bp : start pointer to scan from (restored at the end)
+;  - bp : start pointer to scan from
 ; Returns:
-;  - cx : min(strlen(bp), ROW_LENGTH+1)
+;  - cx : the length of the line from bp up to the 0 or \n
+;  - bp : pointer to the end of the current line (a 0 or a \n)
 scan_forward:
-  push bp
   xor cx, cx
   .find_string_length:
   cmp byte [es:bp], 0
@@ -1193,7 +1191,6 @@ scan_forward:
   jmp .find_string_length
 
   .found_length:
-  pop bp ; restore the start of the string
   ret
 
 ; Sets or clears left or right markers for horizontal line scrolling
