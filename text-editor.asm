@@ -491,6 +491,7 @@ save_and_print_char:
   call set_line_scroll_marker
   ; fallthrough
   .not_cut_off:
+  mov bp, si
   call print_line
 
   ; The cursor did move from the typing interrupt but lets just set it anyway,
@@ -513,7 +514,9 @@ save_new_line:
 .reset_current_line:
 
   ; If we put a \n in the first character, so there's no string to scan
-  cmp di, 1
+  mov bx, [cs:user_code_start]
+  inc bx
+  cmp di, bx
   ja .not_empty_first_line
   ; Clear it incase we were scolled. We're not doing a scan_forward to check
   mov ax, 0x0000 ; set to off ; right margin
@@ -584,8 +587,7 @@ save_new_line:
 
   .make_space_in_middle:
   inc dh
-  mov bx, cx ; move the line length to bx so we can put the + in the cmp
-  cmp byte [es:bx+si], 0 ; if this is the last line, we already have space
+  cmp byte [es:bp], 0 ; if this is the last line, we already have space
   je .no_scroll
   mov al, 1 ; shift the text down to leave a space
   mov bl, 1 ; scroll one line
@@ -594,7 +596,7 @@ save_new_line:
   ; fallthrough
 
   ; Print the tail of the line after the new \n if there is any
-  ; (uses bp,cx from scan_forward above)
+  ; (uses cx from scan_forward above)
   .print_new_line:
   ; re-use the saved result of scan_forward from the check above
   cmp cx, ROW_LENGTH
@@ -604,6 +606,7 @@ save_new_line:
   call set_line_scroll_marker
   ; fallthrough
   .not_cut_off:
+  mov bp, si
   call print_line
 
   jmp set_cursor_and_continue
@@ -656,21 +659,20 @@ backspace:
 
   ; We're re-painting a line tail that's not cut off currently. So:
   ; Replace the line-ending char with a space for covering up the old last char
-  mov bx, si
-  add bx, cx ; bx = the line ending char (\n or \0)
-  push word [es:bx-1] ; save the line ending char in the high byte (you can only push whole words)
-                      ; Note: [es:bx+1] may not be safe to read while -1 is here.
-  mov byte [es:bx], ' '
-  push bx ; save the pointer to the line ending
+  push word [es:bp-1] ; save the line ending char in the high byte (you can only push whole words)
+                      ; Note: [es:bp+1] may not be safe to read while -1 is here.
+  mov byte [es:bp], ' '
+  push bp ; save the pointer to the line ending
 
   ; Repaint the tail of the line
   inc cx ; print the space too
+  mov bp, si
   call print_line
 
   ; Restore the line ending
-  pop bx
+  pop bp
   pop ax
-  mov byte [es:bx], ah
+  mov byte [es:bp], ah
 
   jmp set_cursor_and_continue
 
@@ -686,11 +688,11 @@ backspace:
   ; Print only up to our maximum (recalculated from above since bx gets clobbered)
   mov cx, END_COL+1
   sub cl, dl
+  mov bp, si
   call print_line
 
   jmp set_cursor_and_continue
 
-; TODO: I think the cx return isn't used anymore and this can be made private
 _repaint_bottom_line:
   push dx
   ; Note: the first iteration will just be the tail of the new joined line
@@ -720,14 +722,11 @@ _repaint_bottom_line:
   .right_off:
   call set_line_scroll_marker
 
-  push cx
+  sub bp, cx
   call print_line ; if we hit the end row, paint the new last screen line
-  pop cx
-  pop dx
-  ret
+  ; fallthrough
 
   .no_line_to_print:
-  xor cx, cx
   pop dx
   ret
 
@@ -777,6 +776,7 @@ _join_lines:
   call set_line_scroll_marker
   .no_clipping:
 
+  mov bp, si
   call print_line
   jmp set_cursor_and_continue
 .shift_line_right:
@@ -849,6 +849,7 @@ _scroll_line_left:
   mov cx, ROW_LENGTH ; Print only up to our maximum
   ; fallthrough
   .no_clipping:
+  mov bp, si
   call print_line
 
   ; Check if we're at the start of the line and clear the left marker if so
@@ -870,6 +871,7 @@ _prev_line:
 
   lea bp, [di-1] ; scan from the char before the \n
   call scan_backward
+  ; fallthrough
 
   ; Scroll the screen (and set the final cursor row position)
 .move_up:
@@ -960,7 +962,9 @@ _scroll_line_right:
   ; at least ROW_LENGTH characters in the buffer
 
   ; Print the left-side marker if this is the first time we've cut off a char
-  cmp bp, 1 ; if the first char in the line is the first char in the buffer
+  mov bx, [cs:user_code_start]
+  inc bx
+  cmp bp, bx ; if the first char in the line is the first char in the buffer
   je .need_left_marker
   ; Now we know that bp >= 2 because bp != 1
   cmp byte [es:bp-2], `\n` ; if the char before the first char in the line is \n
@@ -1013,7 +1017,9 @@ _scroll_line_right:
 _next_line:
 
   ; Reset the current line to show the left side if it's longer than the screen.
-  cmp di, 1
+  mov bx, [cs:user_code_start]
+  inc bx
+  cmp di, bx
   je .skip_resetting_line ; The first char was the \n, no string to scan
   lea bp, [di-2] ; scan starting from the char before the \n
   call scan_backward
@@ -1059,6 +1065,7 @@ _next_line:
   ; fallthrough
   .shorter_than_row:
 
+  mov bp, si
   call print_line ; cursor position is already correct
   ; fallthrough
 .done:
@@ -1160,8 +1167,8 @@ scan_backward:
   inc cx
 
   .loop:
-  test bp, bp
-  jz .done
+  cmp bp, [cs:user_code_start]
+  je .done
   cmp byte [es:bp-1], `\n`
   je .done
   dec bp
