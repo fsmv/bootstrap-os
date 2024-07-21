@@ -17,8 +17,8 @@
 %define ERROR_COLOR 0x47
 
 ; Note that the code requires that there's at least one character of border
-%define MAIN_TOP_LEFT 0x0204 ; row = 2,  col = 2
-%define MAIN_BOTTOM_RIGHT 0x164B ; row = 22, col = 79-2
+%define MAIN_TOP_LEFT 0x0204 ; row = 2,  col = 4
+%define MAIN_BOTTOM_RIGHT 0x164B ; row = 22, col = 79-4
 %define START_ROW 0x02
 %define START_COL 0x04
 %define END_ROW 0x16
@@ -46,9 +46,11 @@
 %define USER_CODE_MAX 0xFFFF
 
 ; Values in ax after the keyboard read BIOS call
-; See Figure 4-3 of the 1987 BIOS manual. (page 195)
+; See Figure 4-3 of the 1988 BIOS manual. (page 195)
 %define LEFT_ARROW  0x4B00
 %define RIGHT_ARROW 0x4D00
+%define UP_ARROW 0x4800
+%define DOWN_ARROW 0x5000
 %define EOT 0x2004 ; Ctrl+D
 
 %define ROW_COUNT (END_ROW-START_ROW+1) ; 0x15, 21
@@ -277,6 +279,12 @@ typing_loop:
 
   cmp ax, RIGHT_ARROW
   je move_right
+
+  cmp ax, UP_ARROW
+  je move_up
+
+  cmp ax, DOWN_ARROW
+  je move_down
 
   cmp ax, EOT ; Ctrl+D
   je prepare_and_run_code
@@ -1071,6 +1079,121 @@ _next_line:
 .done:
   jmp set_cursor_and_continue
 
+move_up:
+  ; Find the start of the current line from the current gap buffer position
+  lea bp, [di-1]
+  call scan_backward
+
+  cmp bp, [cs:user_code_start]
+  jne .not_at_end
+  jmp typing_loop
+  .not_at_end:
+
+  ; If the current line is scrolled over, repaint it unscrolled
+  ;
+  ; check the line prefix length against (cursor_col - START_COL)
+  ; because it's possible to be scrolled from moving left but the prefix is less
+  ; than ROW_LENGTH and in that case we still need to repaint
+  xor bh, bh
+  mov bl, dl
+  sub bl, START_COL
+  cmp cx, bx
+  jbe .current_line_not_scrolled
+  ; reprint the current line unscrolled
+  push dx
+  mov cx, ROW_LENGTH
+  mov dl, START_COL
+  call print_line
+  mov ax, 0x0001 ; scroll markers: set to on ; right margin
+  call set_line_scroll_marker
+  mov ax, 0x0100 ; scroll markers: set to on ; right margin
+  call set_line_scroll_marker
+  pop dx
+  .current_line_not_scrolled:
+
+  ; Move bp to the start of the line above
+  dec bp ; move bp to the \n that scan_backward found
+  cmp bp, [cs:user_code_start] ; if the first char in the buffer was a newline
+  je .empty_line_above
+  cmp byte [es:bp-1], `\n`
+  je .empty_line_above
+  dec bp ; skip back to the last character of the line above
+  .empty_line_above: ; scan_backward sets cx = 0 and returns
+  call scan_backward ; leaves cx = length of line above
+
+  ; If the cursor is at the top of the editor window
+  cmp dh, START_ROW
+  je .top_row
+  dec dh ; move the cursor up one line
+  jmp .set_cursor_and_buffer
+
+  .top_row:
+  ; Scroll the screen and paint the new top line
+  push dx
+  ; scroll the screen down one to make room
+  mov dx, MAIN_TOP_LEFT
+  mov al, 1
+  mov bl, 1
+  call scroll_text
+
+  ; Set the scroll markers for printing the above line all the way at the left
+  mov ax, 0x0000 ; scroll markers: set to off ; right margin
+  cmp cx, ROW_LENGTH
+  jbe .shorter_than_row
+  mov cx, ROW_LENGTH ; only print up to the edge of the screen
+  mov ax, 0x0100 ; scroll markers: set to on ; right margin
+  ; fallthrough
+  .shorter_than_row:
+  call set_line_scroll_marker
+
+  call print_line ; print cx chars from bp at dx (MAIN_TOP_LEFT)
+
+  pop dx ; restore the cursor
+  ; fallthrough
+
+  .set_cursor_and_buffer:
+
+  ; Choose the cursor and buffer location on the line above
+  ;
+  ; by .vars_set:
+  ;  Set bp = position to leave the gap for the new cursor
+  ;  and cx = length from the start of the above line to the new cursor
+  ;  and dx = the position to leave the cursor in
+  ; bx = number of characters to left edge of the screen
+  mov bx, dx
+  xor bh, bh
+  sub bx, START_COL
+  cmp cx, bx
+  ja .above_line_is_long_enough
+
+  ; set the cursor to the end of the shorter line
+  mov dl, cl
+  add dl, START_COL
+  add bp, cx
+  jmp .vars_set
+
+  .above_line_is_long_enough:
+  ; set to current line prefix length into the above line
+  ; leave the cursor column where it is
+  add bp, bx
+  mov cx, bx
+  ; fallthrough
+  .vars_set:
+
+  ; Move the gap buffer back to the character (bp) for the new cursor position
+  .move_gap_back_loop:
+  dec di
+  dec si
+  mov al, [es:di]
+  mov [es:si], al
+  cmp di, bp
+  ja .move_gap_back_loop
+
+  jmp set_cursor_and_continue
+
+move_down:
+  jmp typing_loop
+
 ; ==== typing_loop helpers that use ret ====
 
 %ifdef CONVERT_LAYOUT
@@ -1138,9 +1261,9 @@ scroll_text:
 ; Move the VGA cursor to the end of the print
 ;
 ; Args:
-;   bp : pointer to print from
-;   cx : number of characters to print
-;   dx : cursor position to print from
+;   [es:bp] : pointer to print from
+;   cx      : number of characters to print
+;   dx      : cursor position to print from
 print_line:
   ; Print the line from the buffer
   ; bp is already the pointer to print from
