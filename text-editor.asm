@@ -1080,36 +1080,16 @@ _next_line:
   jmp set_cursor_and_continue
 
 move_up:
+  cmp di, [cs:user_code_start]
+  je typing_loop
   ; Find the start of the current line from the current gap buffer position
   lea bp, [di-1]
   call scan_backward
 
   cmp bp, [cs:user_code_start]
-  jne .not_at_end
-  jmp typing_loop
-  .not_at_end:
+  je typing_loop
 
-  ; If the current line is scrolled over, repaint it unscrolled
-  ;
-  ; check the line prefix length against (cursor_col - START_COL)
-  ; because it's possible to be scrolled from moving left but the prefix is less
-  ; than ROW_LENGTH and in that case we still need to repaint
-  xor bh, bh
-  mov bl, dl
-  sub bl, START_COL
-  cmp cx, bx
-  jbe .current_line_not_scrolled
-  ; reprint the current line unscrolled
-  push dx
-  mov cx, ROW_LENGTH
-  mov dl, START_COL
-  call print_line
-  mov ax, 0x0001 ; scroll markers: set to on ; right margin
-  call set_line_scroll_marker
-  mov ax, 0x0100 ; scroll markers: set to on ; right margin
-  call set_line_scroll_marker
-  pop dx
-  .current_line_not_scrolled:
+  call _repaint_current_line_if_needed
 
   ; Move bp to the start of the line above
   dec bp ; move bp to the \n that scan_backward found
@@ -1151,8 +1131,6 @@ move_up:
   pop dx ; restore the cursor
   ; fallthrough
 
-  .set_cursor_and_buffer:
-
   ; Choose the cursor and buffer location on the line above
   ;
   ; by .vars_set:
@@ -1160,11 +1138,12 @@ move_up:
   ;  and cx = length from the start of the above line to the new cursor
   ;  and dx = the position to leave the cursor in
   ; bx = number of characters to left edge of the screen
+  .set_cursor_and_buffer:
   mov bx, dx
   xor bh, bh
   sub bx, START_COL
   cmp cx, bx
-  ja .above_line_is_long_enough
+  jae .above_line_is_long_enough
 
   ; set the cursor to the end of the shorter line
   mov dl, cl
@@ -1192,7 +1171,97 @@ move_up:
   jmp set_cursor_and_continue
 
 move_down:
-  jmp typing_loop
+  mov bp, si
+  call scan_forward
+
+  cmp byte [es:bp], 0
+  je typing_loop
+
+  cmp di, [cs:user_code_start]
+  je .no_repaint_needed
+  push bp
+  lea bp, [di-1]
+  call scan_backward
+  call _repaint_current_line_if_needed
+  pop bp
+  .no_repaint_needed:
+
+  ; Move bp to the start of the line below
+  inc bp ; skip past the \n that scan_forward found
+  push bp
+  call scan_forward
+  pop bp
+
+  ; If the cursor is at the end of the editor window
+  cmp dh, END_ROW
+  je .end_row
+  inc dh ; move the cursor down one line
+  jmp .set_cursor_and_buffer
+
+  .end_row:
+  ; Scroll the screen and paint the new bottom line
+  push dx
+  ; scroll the screen down one to make room
+  mov dx, MAIN_TOP_LEFT
+  mov al, 0
+  mov bl, 1
+  call scroll_text
+
+  ; Set the scroll markers for printing the above line all the way at the left
+  mov ax, 0x0000 ; scroll markers: set to off ; right margin
+  cmp cx, ROW_LENGTH
+  jbe .shorter_than_row
+  mov cx, ROW_LENGTH ; only print up to the edge of the screen
+  mov ax, 0x0100 ; scroll markers: set to on ; right margin
+  ; fallthrough
+  .shorter_than_row:
+  call set_line_scroll_marker
+
+  mov dh, END_ROW
+  call print_line ; print cx chars from bp at dx (bottow left corner)
+
+  pop dx ; restore the cursor
+  ; fallthrough
+
+  ; Choose the cursor and buffer location on the line above
+  ;
+  ; by .vars_set:
+  ;  Set bp = position to leave the gap for the new cursor
+  ;  and cx = length from the start of the below line to the new cursor
+  ;  and dx = the position to leave the cursor in
+  ; bx = number of characters to left edge of the screen
+  .set_cursor_and_buffer:
+  mov bx, dx
+  xor bh, bh
+  sub bx, START_COL
+  cmp cx, bx
+  jae .below_line_is_long_enough
+
+  ; set the cursor to the end of the shorter line
+  mov dl, cl
+  add dl, START_COL
+  add bp, cx
+  jmp .vars_set
+
+  .below_line_is_long_enough:
+  ; set to current line prefix length into the above line
+  ; leave the cursor column where it is
+  add bp, bx
+  mov cx, bx
+  ; fallthrough
+  .vars_set:
+
+  ; Move the gap buffer forward to the character (bp) for the new cursor position
+  .move_gap_forward_loop:
+  mov byte al, [es:si]
+  mov byte [es:di], al
+  inc di
+  inc si ; we know we are not at USER_CODE_MAX because of the \0
+  cmp si, bp
+  jb .move_gap_forward_loop
+
+  jmp set_cursor_and_continue
+
 
 ; ==== typing_loop helpers that use ret ====
 
@@ -1206,6 +1275,33 @@ convert_keyboard_layout:
   mov al, [cs:bx + keyboard_map]
   ret
 %endif
+
+; If the current line is scrolled over, repaint it unscrolled
+;
+; Expects that scan_backward has already been called and takes it's output as
+; input
+_repaint_current_line_if_needed:
+  ; check the line prefix length against (cursor_col - START_COL)
+  ; because it's possible to be scrolled from moving left but the prefix is less
+  ; than ROW_LENGTH and in that case we still need to repaint
+  xor bh, bh
+  mov bl, dl
+  sub bl, START_COL
+  cmp cx, bx
+  jbe .current_line_not_scrolled
+  ; reprint the current line unscrolled
+  push dx
+  mov cx, ROW_LENGTH
+  mov dl, START_COL
+  call print_line
+  mov ax, 0x0001 ; scroll markers: set to on ; right margin
+  call set_line_scroll_marker
+  mov ax, 0x0100 ; scroll markers: set to on ; right margin
+  call set_line_scroll_marker
+  pop dx
+  .current_line_not_scrolled:
+  ret
+
 
 ; Shifts the text up or down N rows in a block (leaving a blank line),
 ; starting at the current cursor line (used to clear a line for save_new_line or
