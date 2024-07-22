@@ -1082,9 +1082,15 @@ _next_line:
 move_up:
   cmp di, [cs:user_code_start]
   je typing_loop
+
   ; Find the start of the current line from the current gap buffer position
-  lea bp, [di-1]
+  mov bp, di
+  xor cx, cx
+  cmp byte [es:di-1], `\n`
+  je .first_char
+  dec bp
   call scan_backward
+  .first_char:
 
   cmp bp, [cs:user_code_start]
   je typing_loop
@@ -1261,7 +1267,6 @@ move_down:
   jb .move_gap_forward_loop
 
   jmp set_cursor_and_continue
-
 
 ; ==== typing_loop helpers that use ret ====
 

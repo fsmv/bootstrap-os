@@ -39,7 +39,7 @@ debug_text:
 ;db "(define elm2 (lambda (l) (car (cdr l)))) (elm2 '(foo bar baz))", 0
 ;db "(quote ((l) . (car (cdr l))))",`\n`,'((l) . (car (cdr l)))", 0
 ;db "(define append1 (lambda (s t) (cond ((pair? s) (cons (car s) (append1 (cdr s) t))) (#t t) ))) (append1 '(this is a) '(test))", 0
-db "(define append1 (lambda (s t)",`\n`,
+db "(define append1 (lambda (s t)",`\n`
 db "  (cond",`\n`
 db "    ((pair? s) (cons (car s) (append1 (cdr s) t)))",`\n`
 db "    (#t t)",`\n`
