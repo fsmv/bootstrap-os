@@ -303,7 +303,9 @@ typing_loop:
 ;   di      - output segment address; starts at 0 offset; null terminated
 ;             This memory is preserved between successive runs of run_code.
 run_code:
-  mov byte [es:di], "!"
+  mov es, di
+  mov byte [es:0], "!"
+  mov byte [es:1], 0
   ret
 %endif
 

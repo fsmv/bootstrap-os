@@ -100,13 +100,23 @@ run_code:
 
   cmp cx, 0
   ja .not_end
+  ; null terminate the output and return
+  ; this is the only return location from .repl
+  mov es, [cs:.output_seg]
+  mov bx, [cs:.output_addr]
+  mov byte [es:bx], 0
   ret
   .not_end:
 
   call parse
 
+  cmp dx, type.ERROR
+  je .parse_error
+
   mov cx, [cs:env]
   call eval
+
+  .parse_error:
 
   ; Print the eval result to the output buffer location
   push es
@@ -114,14 +124,12 @@ run_code:
   push si
   mov si, es
   mov di, [cs:.output_addr]
-  mov bx, [cs:.output_seg]
-  mov es, bx
+  mov es, [cs:.output_seg]
   call print
   ; TODO: check for overflow in print
   ; Add a newline at the end and null terminate it
   mov byte [es:di], `\n`
   inc di
-  mov byte [es:di], 0
   mov [cs:.output_addr], di ; save the end of the output
   ; Restore ds:di for the next lisp expression
   pop si
@@ -153,6 +161,7 @@ objarg2:
 type:
 .ATOM:    equ 0x0001 ; String pointer on es, eg [es:val]; dh is set to the length.
 .CSATOM:  equ 0x0011 ; String pointer on cs, eg [cs:val]; null terminated.
+.ERROR:   equ 0x0091 ; String pointer on cs, this is a CSATOM
 .CONS:    equ 0x0002 ; Pointer on ds; eg [ds:val-4] is the second elm [ds:val-8] is the first elm
 .NIL:     equ 0x0004 ; Value is always 0
 .INT:     equ 0x0008 ; Value is a 16 bit integer
@@ -176,6 +185,9 @@ atoms:
 .err: db 'ERROR', 0
 .lookup_err: db 'no-matching-symbol-error', 0
 .not_fn_err: db 'not-a-function-error', 0
+.open_list_err: db 'missing-right-paren-error', 0
+.no_list_err: db 'extra-right-paren-error', 0
+.symbol_too_long_err: db 'symbol-too-long-max-is-0xFF', 0
 .quote: equ atom_quote
 
 ; Data array of null terminated function names then the function pointer.
@@ -384,7 +396,7 @@ prim_lambda:
   push dx
 
   ; Conditionally set the env arg for add_env
-  ; Start with the bound env or nil TODO: better
+  ; Start with the bound env or nil
   cmp cx, [cs:env]
   je .push_nil
   push cx
@@ -623,6 +635,8 @@ obj_equal:
 ; Because we have 2 string types there are 4 possible combinations we might have
 ; to compare. This function picks the right routine for each.
 ;
+; Note: does not work with type.ERROR
+;
 ; Input:
 ;   push, push - type.ATOM or type.CSATOM
 ;   ax, dx - type.ATOM or type.CSATOM
@@ -635,7 +649,7 @@ atom_equal:
   mov bp, sp
   mov bx, [bp+objarg1.type] ; memory arg type
 
-  ; Check the basic ATOM bit first, which CSATOM fills
+  ; Check the basic ATOM bit first
   test dx, type.ATOM
   jz .not_atom
   test bx, type.ATOM
@@ -905,12 +919,18 @@ scan:
 ;   ax, dx - The object pointing to the parsed list or cons
 _parse_list:
   call scan ; read the element
+  cmp byte [es:bx], 0
+  jne .not_error
+  mov ax, atoms.open_list_err
+  mov dx, type.ERROR
+  ret
+  .not_error:
   cmp byte [es:bx], ')'
-  jne .not_nil
+  jne .not_end
   mov ax, 0
   mov dx, type.NIL
   ret
-  .not_nil:
+  .not_end:
 
   cmp byte [es:bx], '.'
   jne .not_cons
@@ -918,16 +938,32 @@ _parse_list:
   jne .not_cons
   call scan ; skip the .
   call parse ; parse the second element
-  ; skip the ) ; TODO: error if it's not a )
-  jmp scan ; return the parse result which scan doesn't mess up
+  cmp dx, type.ERROR
+  jne .not_cons_parse_error
+  ret
+  .not_cons_parse_error:
+  call scan
+  cmp byte [es:bx], ')'
+  je .correct_cons_ending
+  mov ax, atoms.open_list_err
+  mov dx, type.ERROR
+  .correct_cons_ending:
+  ret
   .not_cons:
 
   ; Parse an element of the list
   call parse
+  cmp dx, type.ERROR
+  jne .not_elm_parse_error
+  ret
+  .not_elm_parse_error:
   push ax
   push dx
   call _parse_list ; Parse the rest of the list
+  cmp dx, type.ERROR
+  je .error
   call reverse_cons ; return (first_element . rest_of_the_list)
+  .error:
   add sp,  4
   ret
 
@@ -948,7 +984,9 @@ _parse_list:
 parse:
   cmp byte [es:bx], ')'
   jne .not_end_error
-  ret ; TODO: error
+  mov ax, atoms.no_list_err
+  mov dx, type.ERROR
+  ret
   .not_end_error:
 
   cmp byte [es:bx], '('
@@ -962,6 +1000,10 @@ parse:
   ; Inner pair (parse() . nil)
   call scan ; skip the '
   call parse
+  cmp dx, type.ERROR
+  jne .not_quote_parse_error
+  ret
+  .not_quote_parse_error:
   push word 0
   push word type.NIL
   call cons
@@ -976,16 +1018,20 @@ parse:
   ret
   .not_quote:
 
+%if 0
   cmp byte [es:bx], '0'
   jb .not_int
   cmp byte [es:bx], '9'
   ja .not_int
-  ret ; TODO
+  ; TODO
   .not_int:
+%endif
 
   cmp cx, 0xFF
   jbe .not_range_error
-  ret ; TODO error symbol too long
+  mov ax, atoms.symbol_too_long_err
+  mov dx, type.ERROR
+  ret
   .not_range_error:
 
   mov ax, bx
@@ -1348,8 +1394,11 @@ print:
   ret
   .not_nil:
 
+  cmp dx, type.ERROR
+  je .cs_atom
   cmp dx, type.CSATOM
   jne .not_csatom
+  .cs_atom:
   mov bx, ax
   .copy_cs_str:
   mov al, [cs:bx]
