@@ -71,6 +71,7 @@ run_code:
   call repl_step
   test cx, cx
   jnz .repl
+  ret
 
 repl_step:
   call scan
@@ -1418,6 +1419,10 @@ print:
   ret
   .not_atom:
 
+  ; TODO: should I just print the prim name, then the print output will actually
+  ; be valid lisp code with this interpreter. The problem is we don't actually
+  ; parse {HEX} syntax. Or maybe we should parse that later and allow users to
+  ; define their own primitives.
   cmp dx, type.PRIM
   jne .not_prim
   mov byte [es:di], '{'

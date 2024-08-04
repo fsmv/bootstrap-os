@@ -30,28 +30,36 @@ debug_text:
 ;db "))",`\n`,`\n`
 ;db "(greeting 'lisp)",0
 
-db "(define 0 ())",`\n`
-db "(define succ (lambda (x) (cons x 0)))",`\n`
-db "(define 1 (succ 0))"," "
-db "(define 2 (succ 1))"," "
-db "(define 3 (succ 2))",`\n`
-db "(define dec (lambda (x) (car x)))",`\n`
-db "(define rep (lambda (x c)",`\n`
-db "  (cond",`\n`
-db "    ((eq? c 0) ())",`\n`
-db "    (#t (cons x (rep x (dec c)) ))",`\n`
-db "  )",`\n`
-db "))",`\n`
-;db "(rep 'lisp 3)",`\n`,`\n`
+;db "(define 0 ())",`\n`
+;db "(define succ (lambda (x) (cons x 0)))",`\n`
+;db "(define 1 (succ 0))"," "
+;db "(define 2 (succ 1))"," "
+;db "(define 3 (succ 2))",`\n`
+;db "(define dec (lambda (x) (car x)))",`\n`
+;db "(define rep (lambda (x c)",`\n`
+;db "  (cond",`\n`
+;db "    ((eq? c 0) ())",`\n`
+;db "    (#t (cons x (rep x (dec c)) ))",`\n`
+;db "  )",`\n`
+;db "))",`\n`
+;;db "(rep 'lisp 3)",`\n`,`\n`
+;
+;db "(define add (lambda (a b)",`\n`
+;db "  (cond",`\n`
+;db "   ((eq? b 0) a)",`\n`
+;db "   (#t (succ (add a (dec b))))",`\n`
+;db "  )",`\n`
+;db "))",`\n`
+;db "(define 5 (add 3 2))",`\n`
+;db "(rep 'lisp 5)",0
 
-db "(define add (lambda (a b)",`\n`
-db "  (cond",`\n`
-db "   ((eq? b 0) a)",`\n`
-db "   (#t (succ (add a (dec b))))",`\n`
-db "  )",`\n`
-db "))",`\n`
-db "(define 5 (add 3 2))",`\n`
-db "(rep 'lisp 5)",0
+db "(define env",`\n`
+; Closures are ((v . x) . e)
+; the global env is set only if there's a defined value in the env
+; So we just need to pop off the defined value and the closure stuff
+db "  (cdr (cdr ((lambda (x) (lambda (y) x)) 'a)))",`\n`
+db ")",`\n`
+db "env",0
 
 ;db "(eq? '(a b c) '(cons a (b c)))",0
 
