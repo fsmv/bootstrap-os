@@ -275,6 +275,8 @@ prim_eq:
   test dx, type.ATOM
   jnz .lhs_atom
 
+  ; TODO: fixme this needs to actually walk the structure
+
   ; If it's not an atom just check the type and value
   call obj_equal
   jmp .equal_result
@@ -328,8 +330,10 @@ prim_cond:
   ; TODO: just change the offsets to skip doing the add instruction
   mov bp, sp
   add bp, objsize ; restore bp (we skipped setting it the first time)
+  ; TODO: I think != nil isn't enough. We need to check if it is true.
+  ;       right now things like PRIM evaluate as true
   cmp dx, type.NIL
-  jne .found_match
+  jne .found_match 
 
   mov ax, [bp-.orig+2]
   mov dx, [bp-.orig]
