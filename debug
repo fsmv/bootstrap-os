@@ -72,4 +72,4 @@ qemu-system-i386 -s -S -drive file=$binfile,format=raw,if=ide &
 gdb -ix $GDB_REAL_CONF \
   -ex 'target remote localhost:1234' \
   -ex "add-symbol-file $elffile -s .text 0x7c00" \
-  -ex 'b *0x7E00' -ex 'c' -ex 'delete breakpoints' # break at the start of the code after the bootloader
+  -ex 'b start_' -ex 'c' -ex 'delete breakpoints' # break at the start of the code after the bootloader
