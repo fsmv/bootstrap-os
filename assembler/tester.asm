@@ -8,9 +8,6 @@
 %define NUM_ROWS 25
 %define NUM_COLS 80
 
-%define BIOS_PRINT_STRING 0x1301
-%define BIOS_PRINT_CHAR 0x0E
-
 start_:
   ; Set the input [es:si] to the included test assembly
   mov ax, input_code
@@ -51,13 +48,12 @@ start_:
 pass:
   mov ax, cs
   mov es, ax
-  mov ax, BIOS_PRINT_STRING
   mov bp, pass_str
   mov cx, pass_str_len
   mov dx, pass_pos
-  xor bh, bh
   mov bl, 0x02 ; black bg green text
-  int 0x10
+  xor bh, bh
+  call print_string
 
   ; Hide the cursor by moving it off screen
   mov ah, 0x02
@@ -92,6 +88,40 @@ error:
   call print_hex
 
   jmp $
+
+print_char:
+%ifdef DEBUGCON
+  out QEMU_DEBUG_PORT, al
+%endif
+
+  mov ah, BIOS_PRINT_CHAR
+  int 0x10
+  ret
+
+; [es:bp] = string to print
+; cx      = length to print
+; dx      = cursor position to print (doesn't affect qemu)
+; bx      = color (doesn't affect qemu)
+print_string:
+%ifdef DEBUGCON
+  push cx
+  push si
+  xor si, si
+  .string_loop:
+  mov byte al, [es:bp+si]
+  out QEMU_DEBUG_PORT, al
+  dec cx
+  inc si
+  test cx, cx
+  jnz .string_loop
+  pop si
+  pop cx
+%endif
+
+  mov ax, BIOS_PRINT_STRING
+  int 0x10
+  ret
+
 
 last_instruction_input: dw 0x0000
 last_instruction_output: dw 0x0000
@@ -137,18 +167,20 @@ test_assembled_instruction:
   cmp byte [cs:num_errors], NUM_ROWS-2 ; -1 for 0-indexing, -1 for one before the end
   jbe .print_mismatch
 
-  ; If we hit the bottom of the screen we wait for the user to hit enter to show
-  ; the next line
-  mov ax, BIOS_PRINT_STRING
   mov bx, .color
   xor dl, dl ; print from column 0
   mov dh, NUM_ROWS-1
+%ifndef HEADLESS
+  ; If we hit the bottom of the screen we wait for the user to hit enter to show
+  ; the next line
+  mov ax, BIOS_PRINT_STRING
   mov bp, scroll_str
   mov cx, scroll_str_len
   int 0x10
   ; Read keyboard
   mov ah, 0x00
   int 0x16
+%endif
   ; Scroll the errors up leaving space at the bottom
   mov ah, 0x06 ; BIOS scroll up
   mov bh, bl ; this call takes the color in bh instead of bl
@@ -165,11 +197,10 @@ test_assembled_instruction:
 .print_mismatch:
 
   xor dl, dl ; print from column 0
-  mov ax, BIOS_PRINT_STRING
   mov bx, .color
   mov bp, got_str
   mov cx, got_str_len
-  int 0x10
+  call print_string
   add dl, got_str_len
 
   ; print the code we just assembled
@@ -181,10 +212,9 @@ test_assembled_instruction:
   ; set es = cs since we need to print some strings and BIOS uses es:bp for this
   mov ax, cs
   mov es, ax
-  mov ax, BIOS_PRINT_STRING
   mov bp, want_str
   mov cx, want_str_len
-  int 0x10
+  call print_string
   add dl, want_str_len
 
   ; print the want bytecode
@@ -197,10 +227,9 @@ test_assembled_instruction:
   call print_bytecode
   pop di
 
-  mov ax, BIOS_PRINT_STRING
   mov bp, line_num_str
   mov cx, line_num_str_len
-  int 0x10
+  call print_string
   add dl, line_num_str_len
 
   ; Print the line number and leave it on the stack
@@ -209,13 +238,12 @@ test_assembled_instruction:
   call print_hex ; this is the bootloader call to print all of cx
   add dl, 4 ; we just printed 4 chars
 
-  mov ah, BIOS_PRINT_CHAR
   mov al, ' '
-  int 0x10
+  call print_char
   mov al, '|'
-  int 0x10
+  call print_char
   mov al, ' '
-  int 0x10
+  call print_char
   add dl, 3 ; maintain the cursor
 
   ; Print the code for the instruction we didn't match on
@@ -233,8 +261,12 @@ test_assembled_instruction:
   mov cx, ax
   .no_clamp:
   mov bx, .color
-  mov ax, BIOS_PRINT_STRING
-  int 0x10
+  call print_string
+
+%ifdef DEBUGCON
+  mov al, `\n`
+  call print_char
+%endif
 
   pop cx ; restore the line number
   ; restore the segment register
@@ -274,7 +306,7 @@ print_byte:
   and al, 0x0F
   call _print_hex_char
   mov al, ' '
-  int 0x10
+  call print_char
 
   add dl, 3 ; move the cursor column
   ret
