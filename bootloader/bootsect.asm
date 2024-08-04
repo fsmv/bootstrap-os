@@ -31,6 +31,10 @@
 ; check here because nasm requires that to go after NUM_EXTRA_SECTORS is
 ; defined.
 
+%define BIOS_PRINT_STRING 0x1301
+%define BIOS_PRINT_CHAR 0x0E
+%define QEMU_DEBUG_PORT 0xE9
+
 %include "bootloader/bootsect-header.asm"
 
 mov [BOOT_DISK], dl ; Save the boot disk number
@@ -102,7 +106,7 @@ jmp $ ; stop forever
 ; e.g. al = 12 prints "C"
 ; clobbers ax, and bx
 print_hex_char:
-  mov ah, 0x0E
+  mov ah, BIOS_PRINT_CHAR
   xor bx, bx
   ; fallthrough
 ; Also assumes ah = 0x0E and bx = 0
@@ -111,19 +115,25 @@ _print_hex_char:
   ja .over_9
 
   add al, '0'
+%ifdef DEBUGCON
+  out QEMU_DEBUG_PORT, al
+%endif
   int 0x10
   ret
 
 .over_9:
   sub al, 10
   add al, 'A'
+%ifdef DEBUGCON
+  out QEMU_DEBUG_PORT, al
+%endif
   int 0x10
   ret
 
 ; cx = two bytes to write at current cursor
 ; clobbers ax, and bx
 print_hex:
-  mov ah, 0x0E ; Scrolling teletype BIOS routine (used with int 0x10)
+  mov ah, BIOS_PRINT_CHAR ; Scrolling teletype BIOS routine (used with int 0x10)
   xor bx, bx ; Clear bx. bh = page, bl = color
 
   ; Nibble 0 (most significant)
@@ -148,7 +158,7 @@ print_hex:
 ; cl = byte to write at current cursor
 ; clobbers ax, and bx
 print_hex_byte:
-  mov ah, 0x0E ; Scrolling teletype BIOS routine (used with int 0x10)
+  mov ah, BIOS_PRINT_CHAR ; Scrolling teletype BIOS routine (used with int 0x10)
   xor bx, bx ; Clear bx. bh = page, bl = color
 
   ; Nibble 1
