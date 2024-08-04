@@ -9,5 +9,15 @@ file=${@: -1}
 name="${file%%.*}"
 binfile="bin/$name.bin"
 
+HEADLESS_ARGS=""
+if [ "$1" = "-DHEADLESS" ]; then
+  HEADLESS_ARGS="-display none"
+fi
+
 mkdir -p `dirname $binfile`
-nasm $file -f bin -o $binfile -DDEBUGCON ${@:1:$(($#-1))} && qemu-system-x86_64 -debugcon stdio -drive file=$binfile,format=raw,if=ide
+OUTPUT=$(nasm $file -f bin -o $binfile -DDEBUGCON ${@:1:$(($#-1))} && \
+  qemu-system-x86_64 $HEADLESS_ARGS -debugcon stdio -drive file=$binfile,format=raw,if=ide | tee /dev/tty)
+
+if grep -q "FAIL" - <<< "$OUTPUT"; then
+  exit 1
+fi
