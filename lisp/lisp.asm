@@ -276,8 +276,6 @@ prim_eq:
   test dx, type.ATOM
   jnz .lhs_atom
 
-  ; TODO: fixme this needs to actually walk the structure
-
   ; If it's not an atom just check the type and value
   call obj_equal
   jmp .equal_result

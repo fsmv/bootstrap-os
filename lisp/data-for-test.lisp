@@ -131,6 +131,12 @@ want: #t
 (cond (() 'false) (#t 'true))
 want: true
 
+(eq? '(a . b) '(a . b))
+want: ()
+
+((lambda (x) (eq? x x)) '(foo bar))
+want: #t
+
 (cond
   ((eq? 'b #t) 'fail)
   ((eq? 'baz quote) 'foo)
@@ -145,6 +151,3 @@ want: a-match
   (#t 'pass)
 )
 want: pass
-
-(eq? '(a . b) '(a . b))
-want: #t
