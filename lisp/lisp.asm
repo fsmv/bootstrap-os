@@ -21,9 +21,25 @@
 ;    for one type should also apply to another.
 ;  - I simplified a lot of things in parsing. For one thing I didn't use a
 ;    buffer for the tokens, I just point into the code. Several of the functions
-;    in tinylisp are just inlined in my code. etc.
+;    in tinylisp are just inlined in my code, etc.
 ;  - I changed some names of things to hopefully make it more clear and don't
 ;    have all of the same functions because of the above changes
+;  - Several changes in the list of primitives. I wanted mine to look more like
+;    McCarthy's paper and be extremely minimal.
+;    - I left out if, and, or as a primitives, you can define those in lisp,
+;      well to get shortcutting you would need macros but technically you can
+;      quote everything and use eval to simulate macros even though it's not
+;      efficient.
+;    - I also left out let* which doesn't allow you to accomplish anything you
+;      couldn't also do with lambdas (although let* is nicer)
+;    - I could remove the pair? primitive, which was in McCarthy's paper as the
+;      inverse atom?. In tinylisp and this interpreter you can actually
+;      implement pair? and atom? within lisp by checking if cdr/car returns an
+;      error for the object. I didn't like the idea of this so I made a more
+;      direct primitive check. It felt important to allow writing error-free
+;      lisp programs.
+;  - This lisp currently doesn't support any form of numbers, or strings for
+;    that matter, everything is lists even numbers and strings!
 
 ; Run the lisp interpreter!
 ;

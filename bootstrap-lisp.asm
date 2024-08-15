@@ -30,6 +30,13 @@ debug_text:
 ;db "))",`\n`,`\n`
 ;db "(greeting 'lisp)",0
 
+;db "(define append (lambda (t . args)",`\n`
+;db "  (cond",`\n`
+;db "    ((pair? args) (append1 t (append . args)))",`\n`
+;db "    (#t t)",`\n`
+;db "  )",`\n`
+;db "))",`\n`,`\n`
+
 ;db "(define 0 ())",`\n`
 ;db "(define succ (lambda (x) (cons x 0)))",`\n`
 ;db "(define 1 (succ 0))"," "
@@ -53,13 +60,109 @@ debug_text:
 ;db "(define 5 (add 3 2))",`\n`
 ;db "(rep 'lisp 5)",0
 
-db "(define env",`\n`
-; Closures are ((v . x) . e)
-; the global env is set only if there's a defined value in the env
-; So we just need to pop off the defined value and the closure stuff
-db "  (cdr (cdr ((lambda (x) (lambda (y) x)) 'a)))",`\n`
-db ")",`\n`
-db "env",0
+;db "(define env",`\n`
+;; Closures are ((v . x) . e)
+;; the global env is set only if there's a defined value in the env
+;; So we just need to pop off the defined value and the closure stuff
+;db "  (cdr (cdr ((lambda (x) (lambda (y) x)) 'a)))",`\n`
+;db ")",`\n`
+;db "env",0
+
+db "(define list (lambda args args))",`\n`
+
+db "(define not (lambda (x)",`\n`
+db "  (eq? x ())",`\n`
+db "))",`\n`,`\n`
+
+;db "(define or1 (lambda (x)",`\n`
+;db "  (cond",`\n`
+;db "    ((not (pair? x)) x)",`\n`
+;db "    ((car x) (car x))",`\n`
+;db "    (#t (or1 (cdr x)))",`\n`
+;db "  )",`\n`
+;db "))",`\n`,`\n`
+;
+;db "(define or (lambda x",`\n`
+;db "  (or1 x)",`\n`
+;db "))",`\n`
+
+db "(define orq1 (lambda (x)",`\n`
+db "  (cond",`\n`
+db "    ((not (pair? x)) x)",`\n`
+db "    ((eval (car x)) (eval (car x)))",`\n`
+db "    (#t (orq1 (cdr x)))",`\n`
+db "  )",`\n`
+db "))",`\n`,`\n`
+
+db "(define orq (lambda x",`\n`
+db "  (orq1 x)",`\n`
+db "))",`\n`
+
+db "(define andq1 (lambda (x)",`\n`
+db "  (cond",`\n`
+db "    ((eq? x ()) #t)",`\n`
+db "    ((not (pair? x)) x)",`\n`
+db "    ((not (eval (car x))) ())",`\n`
+;db "    ((eq? (cdr x) ()) (eval (car x)))",`\n`
+db "    (#t (andq1 (cdr x)))",`\n`
+db "  )",`\n`
+db "))",`\n`
+
+; I think you could avoid doing this by doing (apply (cons and (cdr x)))
+db "(define andq (lambda x",`\n`
+db "  (andq1 x)",`\n`
+db "))",`\n`,`\n`
+
+;db "(define and1 (lambda (x)",`\n`
+;db "  (cond",`\n`
+;db "    ((not (pair? x)) x)",`\n`
+;db "    ((not (car x)) ())",`\n`
+;db "    ((eq? (cdr x) ()) (car x))",`\n`
+;db "    (#t (and1 (cdr x)))",`\n`
+;db "  )",`\n`
+;db "))",`\n`
+;
+;; I think you could avoid doing this by doing (apply (cons and (cdr x)))
+;db "(define and (lambda x",`\n`
+;db "  (and1 x)",`\n`
+;db "))",`\n`,`\n`
+
+;db "(and 'a)",`\n`
+;db "(and1 (cdr '(a b)))",`\n`
+;db "(and 'a 'b 'c)",`\n`
+;db "(and 'a 'b () 'c)",`\n`
+;db "(and1 'a)",`\n`
+;db "(andq '(eq? 'b 'b) '(eq? 'a 'a))",`\n`
+;db "(or () (eq? 'a 'b) 'd)",`\n`
+;db "(or '() '(eq? 'a 'a) '())",`\n`
+
+db "(define inner_equal? (lambda (x y)",`\n`
+db "            (andq ",`\n`
+db "                (list 'pair? (list 'quote x))",`\n`
+db "                (list 'pair? (list 'quote y))",`\n`
+db "                (list 'equal? (list 'quote (car x)) (list 'quote (car y)))",`\n`
+db "                (list 'equal? (list 'quote (cdr x)) (list 'quote (cdr y)))",`\n`
+db "            )",`\n`
+db "))",`\n`
+
+db "(define equal?",`\n`
+db "    (lambda (x y)",`\n`
+db "        (orq",`\n`
+db "            (list 'eq? (list 'quote x) (list 'quote y))",`\n`
+db "            (list 'inner_equal? (list 'quote x) (list 'quote y))",`\n`
+db "        )",`\n`
+db "))",`\n`
+db "(equal? '((a b) c) '((a b) c) )"
+
+;db "(define if (lambda (x y z)",`\n`
+;db "  (cond",`\n`
+;db "    (x y)",`\n`
+;db "    (#t z)",`\n`
+;db "  )",`\n`
+;db "))",`\n`
+;db "(if (eq? () ()) 'true 'false)",`\n`
+
+db 0
 
 ;db "(eq? '(a b c) '(cons a (b c)))",0
 
