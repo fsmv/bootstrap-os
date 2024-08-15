@@ -170,3 +170,6 @@ want: pass
 ))
  (eq? 'a 'a) 'pass 'fail)
 want: pass
+
+(eval '(eq? () ()))
+want: #t
