@@ -11,17 +11,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
-      with:
-        platforms: [ "linux/amd64", "linux/386" ]
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '>=1.17'
+    - name: Set up dependencies
+      run: sudo apt update && sudo apt install -y qemu-system-x86 nasm
 
     - name: Test
-      run: ./test -DHEADLESS lisp/tester.asm
+      run: script -q -e -c "./test -DHEADLESS lisp/tester.asm"

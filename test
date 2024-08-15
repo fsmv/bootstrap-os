@@ -5,6 +5,10 @@ if [ "$#" -eq 0 ]; then
     exit 1
 fi
 
+if [ -z "$QEMU" ]; then
+  QEMU="qemu-system-x86_64"
+fi
+
 file=${@: -1}
 name="${file%%.*}"
 binfile="bin/$name.bin"
@@ -14,9 +18,23 @@ if [ "$1" = "-DHEADLESS" ]; then
   HEADLESS_ARGS="-display none"
 fi
 
+PID=$$
+compile() {
+  nasm $file -f bin -o $binfile -DDEBUGCON ${@:2:$(($#-2))} && \
+    $QEMU $HEADLESS_ARGS -debugcon stdio -drive file=$binfile,format=raw,if=ide
+  # Kill the process if we had a compile error so that we exit with non-zero
+  # status even though we used a pipe which exits with the tee status
+  ERR=$?
+  if [ $ERR -ne 0 ]; then
+    echo "Exit code: $ERR"
+    kill $PID
+    sleep 1
+  fi
+  return $ERR
+}
+
 mkdir -p `dirname $binfile`
-OUTPUT=$(nasm $file -f bin -o $binfile -DDEBUGCON ${@:1:$(($#-1))} && \
-  qemu-system-x86_64 $HEADLESS_ARGS -debugcon stdio -drive file=$binfile,format=raw,if=ide | tee /dev/tty)
+OUTPUT=$(compile ERROR $@ | tee /dev/tty)
 
 if grep -q "FAIL" - <<< "$OUTPUT"; then
   exit 1
