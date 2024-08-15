@@ -352,8 +352,6 @@ prim_cond:
   ; TODO: just change the offsets to skip doing the add instruction
   mov bp, sp
   add bp, objsize ; restore bp (we skipped setting it the first time)
-  ; TODO: I think != nil isn't enough. We need to check if it is true.
-  ;       right now things like PRIM evaluate as true
   cmp dx, type.NIL
   jne .found_match 
 

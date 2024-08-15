@@ -71,6 +71,18 @@ want: ((lisp . lisp) lisp . lisp)
 '((lisp . lisp) . (lisp . lisp))
 want: ((lisp . lisp) lisp . lisp)
 
+((lambda x x) 'a 'b 'c)
+want: (a b c)
+
+((lambda x x) (cdr '(a b c)))
+want: ((b c))
+
+'((b c) . ())
+want: ((b c))
+
+((lambda (x . y) (cons y x)) 'a 'b 'c 'd)
+want: ((b c d) . a)
+
 (car '(#t . ()))
 want: #t
 
@@ -147,7 +159,14 @@ want: a-match
 
 (cond
   (() 'wtf)
-  (quote 'fail)
-  (#t 'pass)
+  (quote 'pass)
+  (#t 'fail)
 )
+want: pass
+
+((lambda (x y z) (cond
+  (x y)
+  (#t z)
+))
+ (eq? 'a 'a) 'pass 'fail)
 want: pass
