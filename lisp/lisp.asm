@@ -202,6 +202,8 @@ atoms:
 primitives:
 db 'cons', 0
 dw prim_cons
+db 'eval', 0
+dw prim_eval
 db 'pair?', 0
 dw prim_is_pair
 ; Note: the CSATOM label for quote must be the exact same string as in the
@@ -243,6 +245,11 @@ prim_cons:
   call cons
   add sp, 2*objsize
   ret
+
+prim_eval:
+  call car
+  call eval
+  jmp eval
 
 ; TODO should there be an error if there's more than one argument? A: yes in CL
 prim_car:
