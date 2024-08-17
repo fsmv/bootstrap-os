@@ -183,6 +183,7 @@ atoms:
 .open_list_err: db 'missing-right-paren-error', 0
 .no_list_err: db 'extra-right-paren-error', 0
 .symbol_too_long_err: db 'symbol-too-long-max-is-0xFF', 0
+.empty: db 0
 .quote: equ atom_quote
 
 ; Data array of null terminated function names then the function pointer.
@@ -453,17 +454,15 @@ prim_define:
   call add_env ; add the name mapped to the value onto the global env
   mov [cs:env], ax
 
-  ; TODO temporarily return the env not the symbol
-  ;add sp, 3*objsize ; drop everything we pushed (but then read it anyway)
-  ;ret
+  add sp, 3*objsize ; drop everything we pushed
 
-  add sp, 3*objsize ; drop everything we pushed (but then read it anyway)
-  mov bp, sp
-  mov ax, [bp-.orig+2]
-  mov dx, [bp-.orig]
-  call car
-  ; return the name we defined
-  ; TODO: is there something nicer I can return? Maybe print nothing
+%ifdef PRINT_ENV_ON_DEFINE
+  ret ; add_env returns the env in ax, dx
+%endif
+
+  ; Return empty string
+  mov ax, atoms.empty
+  mov dx, type.CSATOM
   ret
 
 ; Set the initial state of the lisp global environment
@@ -550,6 +549,8 @@ _cons:
   mov word [ds:di+6], dx
   add di, 8
 
+  ; TODO: check for lisp stack overflow
+
   mov ax, di
   mov dx, type.CONS
   ret
@@ -571,6 +572,8 @@ reverse_cons:
   mov word [ds:di+0], ax
   mov word [ds:di+2], dx
   add di, 8
+
+  ; TODO: check for lisp stack overflow
 
   mov ax, di
   mov dx, type.CONS
@@ -1108,6 +1111,7 @@ bind_variables:
   mov ax, [bp-.orig+2]
   mov dx, [bp-.orig]
   call cdr
+  ; TODO: check for x86 stack overflow
   call bind_variables
   add sp, 2*objsize ; remove bind_variables arg and .orig
   ret
@@ -1119,6 +1123,9 @@ bind_variables:
 ;   cx     - the env pointer
 ;   push, push - the arguments to apply the function to
 ; Output: ax, dx - the result of the function call
+;
+; TODO: I think this could be more efficient if we used a native structure in
+; memory for the 3 parts of the closure instead of using lisp objects.
 apply:
   mov bp, sp
 
@@ -1153,11 +1160,17 @@ apply:
   push ax
   push dx
 
-  ; TODO: better explanation
-  ; Start with env provided or the global env if not
+  ; For bind_variables, start with the closure env provided (if this is a lambda
+  ; inside a lambda, it gets access to the outer lambda arguments as well)
+  ; or the global env if there is no outer environment
   mov ax, [bp-.orig+2]
   mov dx, [bp-.orig]
   call cdr
+  ; TODO: Am I sure that it's the right thing to do to store nil and then
+  ; retrieve cs:env here again? Shouldn't I bind [cs:env] at the time lambda was
+  ; called? This way I think there is a difference if you define a lambda in a
+  ; lamda then defines made after won't be available in the inner lambda body
+  ; but a lambda made at global scope has access to everything defined after.
   cmp dx, type.NIL
   je .use_global_env
   ; TODO: make sure dx is a CONS?
@@ -1167,6 +1180,7 @@ apply:
   mov cx, [cs:env]
   .env_set:
 
+  ; Bind the argument values to the input variable names
   mov ax, [bp-.orig+2]
   mov dx, [bp-.orig]
   call car
@@ -1194,7 +1208,11 @@ apply:
   mov dx, type.CSATOM
   ret
 
-; Evaluates each element of the 
+; Evaluates each element of the input list (e.g. a list of arguments)
+;
+; This is different from eval because the first element is not assumed to be a
+; function, instead all of the elements are just independent expressions that
+; get eval'd in order.
 ;
 ; Input:
 ;   ax,dx - a list of objects to eval
@@ -1203,13 +1221,22 @@ apply:
 ; Output:
 ;   ax,dx - the list of evaluated result objects
 eval_each: ; TODO: switch to the loop implementation
-  test dx, type.CONS ; TODO: should CLOS count or not?
-  jnz .cons
+  cmp dx, type.CONS
+  je .cons
 
+  ; TODO: Are atoms are allowed for single argument functions??
   test dx, type.ATOM
   jnz .atom
+
+  ; TODO: invalid arguments! eval_each should only be passed a list or atom
+  ;cmp dx, type.CLOS
+  ;cmp dx, type.PRIM
+  ; or actually just check != NIL to cover all future types
+  ;
+  ; How do we know at all the call sites that we are always passing in a list?
+
   ; This ends the recursion since the end of the list is nil
-  ; TODO: should this be an error if dx is not NIL? INT and PRIM remain
+  ; TODO: if we check for errors we don't have to set NIL here
   mov ax, 0
   mov dx, type.NIL
   ret
@@ -1219,31 +1246,31 @@ eval_each: ; TODO: switch to the loop implementation
 
   .cons:
 
-  ; Save the original argument (start of the list)
-  mov bp, sp
-  .val: equ 2
+  ; Save the original argument (the list to eval)
+  ;
+  ; 2*objsize because we will push 2 lisp objects onto the stack before we set
+  ; bp = sp and then 2 and 4 are the offsets for ax and dx
+  .val: equ 2*objsize - 2
   push ax
-  .typ: equ 4
+  .typ: equ 2*objsize - 4
   push dx
 
   ; recursively eval_each the rest of the list
   call cdr
+  ; TODO: check for x86 stack overflow
   call eval_each ; bp clobbered
-  ; save the result, to forward to cons
+  ; save the result of eval_each, the tail of the result list
   push ax
   push dx
 
-  ; TODO: just change the offsets
+  ; Restore the original input list argument
   mov bp, sp
-  add bp, 2*objsize
+  mov ax, [bp+.val]
+  mov dx, [bp+.typ]
+  call car ; Get the first element of the list
+  call eval ; Evaluate the first element
 
-  ; Evaluate the first element
-  mov ax, [bp-.val] ; restore the original argument
-  mov dx, [bp-.typ]
-  call car
-  call eval
-
-  call cons
+  call cons ; append the first result to the rest of the results
   add sp, 2*objsize
   ret
 
@@ -1267,6 +1294,7 @@ eval_each: ; TODO: switch to the loop implementation
 ; Output:
 ;   ax,dx - the evaluated result object
 eval:
+  ; TODO: check for x86 stack overflow
   test dx, type.ATOM
   jnz .atom
   test dx, type.CONS
