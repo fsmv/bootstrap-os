@@ -121,9 +121,13 @@ repl_step:
   mov es, [cs:output_seg]
   call print
   ; TODO: check for overflow in print
+  cmp di, [cs:output_addr]
+  je .empty_out
   ; Add a newline at the end and null terminate it
   mov byte [es:di], `\n`
   inc di
+  .empty_out:
+  mov byte [es:di], 0
   mov [cs:output_addr], di ; save the end of the output
   ; Restore ds:di for the next lisp expression
   pop si

@@ -26,7 +26,14 @@ start_:
   mov ax, [cs:output_addr]
   push ax
 
+  .continue:
   call repl_step
+  test cx, cx
+  jz .end_of_file
+  mov bp, sp
+  mov cx, [ss:bp]
+  cmp cx, [cs:output_addr]
+  je .continue
 
   ; TODO: stolen from scan:
   .skip_spaces:
@@ -58,7 +65,6 @@ start_:
   push di
   mov ax, OUTPUT_LOC
   mov ds, ax
-  xor cx, cx
   .compare_loop:
 
   mov byte al, [es:si]
@@ -145,6 +151,16 @@ start_:
 
 
   .test_file_error: ; TODO
+  mov bp, fail_str
+  mov cx, fail_str_len
+  call print_string
+  add dx, fail_str_len
+
+  mov al, [es:si]
+  call print_char
+  mov al, `\n`
+  call print_char
+
   ;fallthrough
 
 halt:

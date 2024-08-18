@@ -173,3 +173,7 @@ want: pass
 
 (eval '(eq? () ()))
 want: #t
+
+(define list (lambda l l))
+(list '1 '2 '3)
+want: (1 2 3)
