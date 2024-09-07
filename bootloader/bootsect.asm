@@ -72,26 +72,34 @@ mov ax, 0x0305
 ;mov bx, 0x0107 ; 500 ms delay before repeat ; 16 characters per second
 mov bx, 0x0100 ; 500 ms delay before repeat ; 30 characters per second
 int 0x16
+; fallthrough
+
+load_extra_sectors:
+; int 0x13 shouldn't be called with 0 for the amount to read.
+; Can't use preprocessor for this unfortunately because it's a label
+mov al, NUM_EXTRA_SECTORS ; number of sectors to read
+test al, al
+je start_
 
 ; Load the code from the extra sectors
+; Try to do the full read every time to take advantage of possible BIOS support
+; for multi-track reads if NUM_EXTRA_SECTORS > 63
 mov ah, 0x02
-mov al, NUM_EXTRA_SECTORS
 mov bx, SECTOR_SIZE ; es:bx is address to write to. es = cs, so write directly after the boot sector
-mov cx, 0x0002 ; Cylinder 0; Sector 2 (1 is the boot sector)
-mov dl, [BOOT_DISK]
-xor dh, dh ; Head 0
+mov dl, [BOOT_DISK] ; Drive number
+xor dh, dh ; Head number
+mov cx, 0x0002 ; Read from Cylinder (track) 0; Sector 2 (1 is the boot sector)
 int 0x13
 
-; Check for errors
-cmp ax, NUM_EXTRA_SECTORS
-je start_
+jnc start_ ; if there was no error, jump to the loaded user code
+; Otherwise handle errors
 
 push ax ; push the error code
 
 ; Print the error message
 mov ax, 0x1301 ; Write String, move cursor mode in al
-mov bp, error_msg ; String pointer in es:bp (es is at code start from bootsect-header.asm)
-mov cx, error_msg_len ; String length
+mov bp, disk_error_msg ; String pointer in es:bp (es is at code start from bootsect-header.asm)
+mov cx, disk_error_msg_len ; String length
 xor dx, dx ; top left
 mov bx, 0x004F ; bh = 0 (page number); bl = color (white on red)
 int 0x10
@@ -99,6 +107,27 @@ int 0x10
 pop cx ; pop the error code
 call print_hex ; print the error code
 
+mov ax, 0x1301 ; Write String, move cursor mode in al
+mov bp, retry_msg ; String pointer in es:bp (es is at code start from bootsect-header.asm)
+mov cx, retry_msg_len ; String length
+mov dx, 0x0100 ; second line; left edge
+mov bx, 0x004F ; bh = 0 (page number); bl = color (white on red)
+int 0x10
+
+mov cl, [READ_RETRIES]
+call print_hex
+
+cmp byte [READ_RETRIES], 0
+je .no_more_tries
+
+; Reset the disk and retry
+dec byte [READ_RETRIES]
+xor ax, ax
+mov dl, [BOOT_DISK] ; Drive number
+int 0x13
+jmp load_extra_sectors
+
+.no_more_tries:
 jmp $ ; stop forever
 
 ; Prints the ascii hex character which represents the integer value of al
@@ -174,9 +203,12 @@ print_hex_byte:
 
 ; === Bootsector data area ===
 
-error_msg: db `Error reading additional sectors from disk: `
-error_msg_len: equ $-error_msg
+disk_error_msg: db `Error reading from disk: `
+disk_error_msg_len: equ $-disk_error_msg
+retry_msg: db `Retry attempts remaining: `
+retry_msg_len: equ $-retry_msg
 
 BOOT_DISK: db 0x00 ; value is filled first thing
+READ_RETRIES: db 5
 
 %include "bootloader/bootsect-footer.asm"
