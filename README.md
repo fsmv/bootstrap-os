@@ -17,9 +17,9 @@ exactly that.
 
 ## Compatibility
 
-This code will work on any x86 CPU made between 2020 and 1981 with EGA support.
-So any modern x86 PC with BIOS support. I believe the earliest machine it would
-work on is the original 1981 IBM PC with a 1984 EGA card expansion.
+This code should run correctly on any x86 PC compatible machine made between
+1984 and 2020. I believe the earilest machine that will run it is the IBM PC AT
+with the EGA card expansion released in October 1984.
 
 If it doesn't boot on your machine that supports BIOS, please let me know. I'd
 love to find out why.
@@ -27,18 +27,30 @@ love to find out why.
 ### Compatibility details
 
 This code is 16 bit real mode x86 assembly which Intel has kept available on all
-x86 CPUs since the original 8086 processor from 1976.
+x86 CPUs since the original 8086 processor from 1976. The assembly code itself
+is compatible with the 8086.
 
-It also depends on the IBM PC BIOS hardware interface standard from 1981 which
-modern computers still implement. Sadly Intel has partially ended this
+It also depends on the IBM PC BIOS hardware interface standard started in 1981
+which modern computers still implement. Sadly Intel has partially ended this
 incredible nealy 40 year backwards compatibility story by officially
 [ending support for BIOS](https://www.bleepingcomputer.com/news/hardware/intel-plans-to-end-legacy-bios-support-by-2020/)
 as of 2020, so now there are some machines on the market that only support UEFI
 booting.
 
-Finally it depends on EGA, the Enhanced Graphics Adapter card API, because it
-uses the 80x25 16 colors text video mode which was added with that card. This is
-the predicessor to CGA and VGA.
+The latest BIOS call used here is int 0x10 with ah = 0x13 for printing a string.
+This was introduced with PC AT although the earlier XT machines got this feature
+later with a BIOS update. Additionally it uses BIOS functions to set the
+overscan color and blink bit behavior which where added with the EGA card, so it
+is technically not compatible with the CGA card although it will mostly work.
+
+If we had a replacement for BIOS print string based on the print character
+interrupts, technically it could be compatible with the original PC from 1981.
+However the lisp interpreter code is more than the 8 sectors per track the PC
+supported and the bootsector code expects to have multi-track read support which
+the PC didn't have originially (maybe you could get a BIOS that does have it).
+
+Additionally the text editor requires 256k of RAM which was the maximum possible
+PC configuration.
 
 ## Why?
 

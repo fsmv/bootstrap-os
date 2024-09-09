@@ -28,6 +28,9 @@
 %define END_ROW 0x16
 %define END_COL 0x4B
 
+; TODO: detect the RAM and give an error if we don't have 256k which is 0x40000
+; which is exactly the 4 segments we use (the 4th is the code segment)
+
 ; Segment register value (so the actual start is at the address 0x10*this)
 ; This is the first sector after the editor's code
 ;
@@ -76,6 +79,7 @@
 ; configured gdb to breakpoint
 start_:
 
+; TODO: CGA support
 ; Set the overscan color to the border color
 mov ax, 0x1001
 mov bh, OVERSCAN_COLOR
@@ -103,7 +107,7 @@ int 0x10
 
 ; Memory map:
 ;
-; Each segment gets a full non-overlaping 64k block of memory and we don't move
+; Each segment gets a full non-overlapping 64k block of memory and we don't move
 ; the segment so 64k is the limit for each part.
 ;
 ; SS: 0x050
@@ -117,7 +121,7 @@ int 0x10
 ;   - Extra memory passed to the plugin program that runs the code you typed.
 ;     Only set when ctrl+D is pressed and passed to the plugin.
 ;   - Normally the default for memory address reads and our bootloader leaves
-;     this set to CODE_SEGMENT for that. But this code alwasy uses cs: to
+;     this set to CODE_SEGMENT for that. But this code always uses cs: to
 ;     reference strings stored in the binary.
 
 ; --- typing_loop global register variables ---
@@ -133,7 +137,7 @@ int 0x10
 ; Note: We must have at least one char of gap i.e. si-di >= 1 at all times
 ;       (because we use it as scratch space when printing sometimes)
 ;
-; Additonally cx,bp are callee save while ax,bx are caller save (clobbered)
+; Additionally cx,bp are callee save while ax,bx are caller save (clobbered)
 mov ax, USER_CODE_LOC
 mov es, ax
 mov ax, COMPILER_DATA_LOC
@@ -1395,7 +1399,8 @@ print_line:
   ; dx is the cursor position to print at
   xor bh, bh ; page number 0
   mov bl, MAIN_COLOR
-  mov ax, 0x1301     ; Write String, with moving the cursor
+  mov ah, BIOS_PRINT_STRING  ; Write String
+  mov al, 1 ; no attr bytes, move the cursor
   int 0x10
   ret
 
@@ -1608,7 +1613,8 @@ print_error:
   mov dx, MAIN_TOP_LEFT-0x0100 ; one line above the top left corner
   xor bh, bh ; page number 0
   mov bl, ERROR_COLOR
-  mov ax, 0x1301 ; write string without moving the cursor
+  mov ah, BIOS_PRINT_STRING
+  mov al, 0 ; no attr bytes, don't move the cursor
   int 0x10
 
   ; reset the es segment
