@@ -15,6 +15,10 @@
 %define MAIN_COLOR 0x17
 %define BORDER_COLOR 0x97
 %define ERROR_COLOR 0x47
+; This is a different color space from the others. It's 6 bits.
+; secondary r,g,b then primary r,g,b
+; So 0x39 is 1 for all secondary values and 1 for b
+%define OVERSCAN_COLOR 0x39
 
 ; Note that the code requires that there's at least one character of border
 %define MAIN_TOP_LEFT 0x0204 ; row = 2,  col = 4
@@ -71,6 +75,11 @@
 ; start_ should be the first bytes in the file because that's where I have
 ; configured gdb to breakpoint
 start_:
+
+; Set the overscan color to the border color
+mov ax, 0x1001
+mov bh, OVERSCAN_COLOR
+int 0x10
 
 ; Set the border color (by clearing the whole screen)
 mov ax, 0x0600
