@@ -135,11 +135,9 @@ jmp $ ; stop forever
 ; e.g. al = 12 prints "C"
 ; clobbers ax, and bx
 print_hex_char:
-  mov ah, BIOS_PRINT_CHAR
-  xor bx, bx
-  ; fallthrough
-; Also assumes ah = 0x0E and bx = 0
-_print_hex_char:
+  mov ah, BIOS_PRINT_CHAR ; Scrolling teletype BIOS routine (used with int 0x10)
+  xor bx, bx ; Clear bx. bh = page, bl = color
+
   cmp al, 9
   ja .over_9
 
@@ -162,42 +160,36 @@ _print_hex_char:
 ; cx = two bytes to write at current cursor
 ; clobbers ax, and bx
 print_hex:
-  mov ah, BIOS_PRINT_CHAR ; Scrolling teletype BIOS routine (used with int 0x10)
-  xor bx, bx ; Clear bx. bh = page, bl = color
-
   ; Nibble 0 (most significant)
   mov al, ch
   shr al, 4
-  call _print_hex_char
+  call print_hex_char
   ; Nibble 1
   mov al, ch
   and al, 0x0F
-  call _print_hex_char
+  call print_hex_char
   ; Nibble 2
   mov al, cl
   shr al, 4
-  call _print_hex_char
+  call print_hex_char
   ; Nibble 3
   mov al, cl
   and al, 0x0F
-  call _print_hex_char
+  call print_hex_char
 
   ret
 
 ; cl = byte to write at current cursor
 ; clobbers ax, and bx
 print_hex_byte:
-  mov ah, BIOS_PRINT_CHAR ; Scrolling teletype BIOS routine (used with int 0x10)
-  xor bx, bx ; Clear bx. bh = page, bl = color
-
   ; Nibble 1
   mov al, cl
   shr al, 4
-  call _print_hex_char
+  call print_hex_char
   ; Nibble 2
   mov al, cl
   and al, 0x0F
-  call _print_hex_char
+  call print_hex_char
 
   ret
 

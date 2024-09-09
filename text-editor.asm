@@ -89,7 +89,7 @@ mov bh, BORDER_COLOR
 int 0x10
 
 ; Set the background color (by clearing just the middle)
-;mov ax, 0x0600
+mov ax, 0x0600
 mov cx, MAIN_TOP_LEFT
 mov dx, MAIN_BOTTOM_RIGHT
 mov bh, MAIN_COLOR
@@ -1323,12 +1323,15 @@ _repaint_current_line_if_needed:
 ; starting at the current cursor line (used to clear a line for save_new_line or
 ; join lines in backspace)
 ;
+; Saves bp
+;
 ; Args:
 ;   dx : The top left of the block to scroll, goes until the bottom right of the
 ;        text area
 ;   al : 0 for up, non-zero for down
 ;   bl : number of rows to scroll
 scroll_text:
+  push bp
   push dx ; cursor position
   push cx
 
@@ -1343,13 +1346,19 @@ scroll_text:
   mov ch, dh ; start at the cursor row for all 3 (and go until the bottom)
   mov al, bl ; set the number of rows to scroll
 
+  ; Save ax because BIOS doesn't preserve ax
+  push ax
+  mov bp, sp
+
   ; Scroll the user code text area
+  ;mov ax, [bp]
   mov cl, START_COL
   mov dx, MAIN_BOTTOM_RIGHT
   mov bh, MAIN_COLOR ; Also clear bh because it's the page number for write string below
   int 0x10
 
   ; Scroll the left side scroll markers (even if there's nothing there)
+  mov ax, [bp]
   mov cl, START_COL - 1 ; left one column from the upper left corner (columns are the low bits, so we can save an instruction)
   mov dh, END_ROW
   mov dl, START_COL-1
@@ -1359,14 +1368,17 @@ scroll_text:
   ; Scroll the right side scroll markers
   ; Note: I reset some registers to the value they should still have
   ;       just in case the BIOS clobbers them
+  mov ax, [bp]
   mov cl, END_COL+1
   mov dh, END_ROW
   mov dl, END_COL+1
   mov bh, BORDER_COLOR ; Also clear bh because it's the page number for write string below
   int 0x10
 
+  pop ax
   pop cx
   pop dx
+  pop bp
   ret
 
 ; Print a line from the buffer at the starting at the current cursor position
