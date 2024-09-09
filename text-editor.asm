@@ -216,7 +216,7 @@ debug_print_hex:
 
   ; Calculate where to print based on number of words we have printed
   xor ax, ax
-  mov byte al, [num_debug_prints]
+  mov byte al, [cs:num_debug_prints]
   mov bl, NUM_PRINTS_PER_ROW
   div bl
   ; al = (num_debug_prints)/(num_per_row); ah = (num_debug_prints) % (num_per_row)
@@ -226,12 +226,12 @@ debug_print_hex:
   ; Reset the count so we overwrite at the beginning
   cmp dh, START_ROW
   jne .no_reset
-  mov byte [num_debug_prints], 0
+  mov byte [cs:num_debug_prints], 0
   xor ax, ax
   xor dh, dh
   .no_reset:
 
-  inc byte [num_debug_prints] ; remember that we printed
+  inc byte [cs:num_debug_prints] ; remember that we printed
 
   ; column += modulus * (hex+" " string length)
   mov al, ah
