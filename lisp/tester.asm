@@ -204,7 +204,8 @@ print_string:
   pop cx
 %endif
 
-  mov ax, BIOS_PRINT_STRING
+  mov ah, BIOS_PRINT_STRING
+  mov al, 1 ; no attr bytes, move cursor
   int 0x10
   ret
 
