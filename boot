@@ -10,4 +10,4 @@ name="${file%%.*}"
 binfile="bin/$name.bin"
 
 mkdir -p `dirname $binfile`
-nasm $file -f bin -o $binfile ${@:1:$(($#-1))} && qemu-system-x86_64 -drive file=$binfile,format=raw,if=ide
+nasm $file -f bin -o $binfile ${@:1:$(($#-1))} && qemu-system-x86_64 $QEMU_ARGS -drive file=$binfile,format=raw,if=ide

@@ -5,10 +5,6 @@ if [ "$#" -eq 0 ]; then
     exit 1
 fi
 
-if [ -z "$QEMU" ]; then
-  QEMU="qemu-system-x86_64"
-fi
-
 file=${@: -1}
 name="${file%%.*}"
 binfile="bin/$name.bin"
@@ -21,7 +17,7 @@ fi
 PID=$$
 compile() {
   nasm $file -f bin -o $binfile -DDEBUGCON ${@:2:$(($#-2))} && \
-    $QEMU $HEADLESS_ARGS -debugcon stdio -drive file=$binfile,format=raw,if=ide
+    qemu-system-x86_64 $QEMU_ARGS $HEADLESS_ARGS -debugcon stdio -drive file=$binfile,format=raw,if=ide
   # Kill the process if we had a compile error so that we exit with non-zero
   # status even though we used a pipe which exits with the tee status
   ERR=$?

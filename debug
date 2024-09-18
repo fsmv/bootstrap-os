@@ -60,11 +60,11 @@ nasm $bit16file -f elf32 -F dwarf -g -w+gnu-elf-extensions -o $elffile ${@:1:$((
 rm $bit16file
 
 if ! which qemu-system-i386 > /dev/null; then
-  printf "\nYou need to install qemu-arch-extra to use the debugger\n"
+  printf "\nYou need to install qemu-system-i386 (qemu-arch-extra package in some distributions) to use the debugger\n"
   exit 127
 fi
 
-qemu-system-i386 -s -S -drive file=$binfile,format=raw,if=ide &
+qemu-system-i386 $QEMU_ARGS -s -S -drive file=$binfile,format=raw,if=ide &
 
 # Note: If you turn off the offset for the add-symbol-file command then gdb can
 # load the source code line numbers correctly but the fancy real-mode-gdb config

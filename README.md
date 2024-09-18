@@ -109,6 +109,37 @@ the call, but you can open up that file and try out the other commands too.
     2. Choose either the user or system-wide Path variable and add both `C:\Program Files\NASM` & `C:\Program Files\qemu`
  4. `boot.bat bootstrap-lisp.asm` (alternatively you can use the bash script in the git bash prompt)
 
+#### Android
+
+ 1. Install [Termux](https://play.google.com/store/apps/details/id=com.termux)
+    from the play store (or f-droid)
+
+ 2. Install qemu and the assembler, and git to clone the repo
+    `pkg install x11-repo && pkg install qemu-system-x86-64 nasm git`
+
+ 3. (Optional) Set up X11 for graphical display
+
+    1. Install the Termux X11 apk from
+       https://github.com/termux/termux-x11/releases (you most likely need the
+       arm64 one), or from f-droid
+    2. In the Termux X11 app settings configure the output display resolution
+       mode to custom and the resolution to 720x480
+    3. Install the necessary packages in the main Termux app:
+       `pkg install termux-x11-nightly`
+
+ 4. Clone bootstrap-os `git clone https://github.com/fsmv/bootstrap-os.git && cd bootstrap-os`
+
+ 5. To run in Termux:
+    1. `export QEMU_ARGS="-display gtk,show-menubar=off -L /data/data/com.termux/files/usr/share/qemu"`
+       If you like you can put this in `~/.bashrc` to save it
+    2. `termux-x11 :0 -xstartup "./boot bootstrap-lisp.asm"`
+       - Alternatively (if you didn't install the X11 app) you can run:
+         `./test -DHEADLESS lisp/tester.asm`
+         it will print the test results using the qemu debug console feature.
+
+I tried to run the debugger but I wasn't able to install a version of gdb that
+understands x86 in Termux (it only does arm) so debugging won't work.
+
 ## Reference Manuals
 
 This project depends on the
