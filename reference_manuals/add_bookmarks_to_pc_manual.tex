@@ -1,0 +1,96 @@
+% To run: pdflatex "\\def\\filename{$FILENAME}\\input{$THIS_FILE}"
+% Huge thanks to https://web.archive.org/web/20120616001456/https://michaelgoerz.net/blog/2011/04/pdf-bookmarks-with-latex/
+% which this entire file is templated on
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{pdfpages}
+\usepackage[
+  pdfpagelabels=true,
+  pdftitle={Personal Computer Technical Reference},
+  pdfauthor={IBM}
+]{hyperref}
+\usepackage{bookmark}
+
+\begin{document}
+  \includepdf[pages=1-]{\filename}
+
+  \bookmark[page=01,level=0]{Cover}
+  \bookmark[page=05,level=0]{Contents}
+    \bookmark[page=11,level=1]{Figure Listing}
+    \bookmark[page=12,level=1]{Table Listing}
+  \bookmark[page=13,level=0]{Hardware Overview}
+    \bookmark[page=16,level=1]{System Block Diagram}
+  \bookmark[page=17,level=0]{Hardware}
+    \bookmark[page=19,level=1]{System Board}
+      \bookmark[page=22,level=2]{System Board Data Flow}
+      \bookmark[page=24,level=2]{I/O Channel}
+      \bookmark[page=29,level=2]{System Board Component Diagram}
+      \bookmark[page=30,level=2]{Keyboard}
+        \bookmark[page=33,level=3]{Keyboard Scan Codes}
+        \bookmark[page=34,level=3]{Keyboard Connector Specifications}
+      \bookmark[page=35,level=2]{Cassette User Interface}
+        \bookmark[page=35,level=3]{Cassette Jumpers}
+        \bookmark[page=37,level=3]{Cassette Connector Specifications}
+      \bookmark[page=38,level=2]{Speaker Interface}
+      \bookmark[page=39,level=2]{I/O Address Map}
+      \bookmark[page=41,level=2]{System Memory Map}
+      \bookmark[page=44,level=2]{Expansion Switch Settings}
+        \bookmark[page=45,level=3]{Diskette Drives Switch Settings}
+        \bookmark[page=45,level=3]{Monitor Type Switch Settings}
+        \bookmark[page=46,level=3]{Memory Switch Settings}
+    \bookmark[page=49,level=1]{Power Supply}
+      \bookmark[page=50,level=2]{Input Requirements}
+      \bookmark[page=52,level=2]{Operating Characteristics}
+    \bookmark[page=53,level=1]{IBM Mono Display and Parallel Printer Adapter}
+      \bookmark[page=55,level=2]{System Channel Interface}
+      \bookmark[page=56,level=2]{Modes of Operation}
+      \bookmark[page=57,level=2]{Programming Considerations}
+        \bookmark[page=57,level=3]{6845 Initialization Parameters}
+        \bookmark[page=57,level=3]{Memory Requirements}
+        \bookmark[page=58,level=3]{Interrupt Levels}
+        \bookmark[page=58,level=3]{I/O Address and Bit Map}
+    \bookmark[page=61,level=1]{Color/Graphics Monitor Adapter}
+      \bookmark[page=64,level=2]{Major Components Definitions}
+      \bookmark[page=65,level=2]{Modes of Operation}
+      \bookmark[page=67,level=2]{Mono vs Color Attributes}
+      \bookmark[page=68,level=2]{Graphics Storage Map}
+      \bookmark[page=70,level=2]{Description of Basic Operations}
+      \bookmark[page=71,level=2]{Summary of Available Colors}
+      \bookmark[page=71,level=2]{Programming Considerations}
+        \bookmark[page=72,level=3]{6845 Register Description}
+        \bookmark[page=73,level=3]{Programming the Mode Control and Status Register}
+        \bookmark[page=73,level=3]{Color Select Register}
+        \bookmark[page=74,level=3]{Mode Select Register}
+        \bookmark[page=75,level=3]{Status Register}
+        \bookmark[page=76,level=3]{Memory Requirements}
+        \bookmark[page=77,level=3]{I/O Address and Bit Map}
+    \bookmark[page=81,level=1]{Parallel Printer Adapter}
+      \bookmark[page=83,level=2]{Programming Considerations}
+      \bookmark[page=85,level=3]{Parallel Interface Connector Specifications}
+      \bookmark[page=86,level=3]{IBM 80 CPS Matrix Printer}
+      \bookmark[page=88,level=3]{Setting the DIP Switches}
+      \bookmark[page=89,level=3]{Parallel Interface Description}
+      \bookmark[page=94,level=3]{ASCII Coding Table}
+      \bookmark[page=95,level=3]{ASCII Control Codes}
+    \bookmark[page=105,level=1]{5 1/4-Inch Diskette Drive Adapter}
+      \bookmark[page=107,level=2]{Functional Description}
+      \bookmark[page=110,level=2]{Programming Considerations}
+      \bookmark[page=119,level=2]{Programming Summary}
+      \bookmark[page=121,level=2]{System I/O Channel Interface}
+      \bookmark[page=122,level=2]{Drive A and B Interface}
+      \bookmark[page=124,level=2]{Interface Specifications}
+      \bookmark[page=126,level=2]{5-1/4" Diskette Drive}
+      \bookmark[page=127,level=2]{Diskettes}
+      \bookmark[page=128,level=2]{Mechanical and Electrical Specifications}
+    \bookmark[page=129,level=1]{Memory Expansion Options}
+    \bookmark[page=133,level=1]{Game Control Adapter}
+    \bookmark[page=139,level=1]{Asynchronous Communications Adapter}
+      \bookmark[page=141,level=2]{Modes of Operation}
+      \bookmark[page=142,level=2]{Interface Description}
+      \bookmark[page=145,level=2]{INS8250 Functional Pin Description}
+      \bookmark[page=149,level=2]{Programming Considerations}
+      \bookmark[page=162,level=2]{Selecting The Interface Format}
+      \bookmark[page=163,level=2]{Connector Specification}
+  \bookmark[page=165,level=0]{ROM and System Usage}
+
+\end{document}

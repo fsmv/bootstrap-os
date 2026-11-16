@@ -1,28 +1,53 @@
-BIOS_DOC_NAME=IBM_BIOS_Manual_1988.pdf
-VGA_DOC_NAME=IBM_VGA_Manual_1992.pdf
+# Downloads pdf documents for IBM PC programming and adds bookmarks using TeX.
+#
+# Without asking it downloads the essentials:
+#  - The PS/2 BIOS manual which has the nicest listing of the BIOS interrupts 
+#  - The modern Intel Software Developers Manual which has info about x86
+#
+# It prompts to ask if you'd like other relevant manuals as well and optionally
+# can add PDF bookmarks to some of the PDFs.
 
-echo -n "The official Intel Software Developer's Manual and the Optimization Manual can be downloaded from:"
-echo -n "https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html"
-echo -n "If the links haven't moved this script will download them automatically."
+if [ -z "$BITSAVERS" ]; then
+ # As of April 2026 bitsavers banned wget because of too much traffic
+ #BITSAVERS=https://bitsavers.org
+ BITSAVERS=https://bitsavers.trailing-edge.com/
+fi
+BIOS_DOC_NAME=IBM_PS2_BIOS_Manual_1988.pdf
+VGA_DOC_NAME=IBM_VGA_Manual_1992.pdf
+PC_DOC_NAME=IBM_PC_Manual_1981.pdf
+
+echo "The official Intel Software Developer's Manual and the Optimization Manual can be downloaded from:"
+echo "https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html"
+echo "If the links haven't moved this script will download them automatically."
 
 wget -nc --no-check-certificate https://cdrdv2-public.intel.com/789583/325462-sdm-vol-1-2abcd-3abcd-4.pdf -O Intel_Software_Developers_Manual.pdf
-wget -nc http://bitsavers.trailing-edge.com/pdf/ibm/pc/ps2/15F0306_PS2_and_PC_BIOS_Interface_Technical_Reference_May88.pdf -O $BIOS_DOC_NAME
+wget -nc $BITSAVERS/pdf/ibm/pc/ps2/15F0306_PS2_and_PC_BIOS_Interface_Technical_Reference_May88.pdf -O $BIOS_DOC_NAME
 
-echo -n "Do you want the Intel Optimization Manual? [y/n]: "
+PC_MANUAL=0
+echo "By default this script downloaded the comprehensive IBM BIOS manual from 1988"
+echo "Do you want the Original 1981 IBM Personal Computer technical manual as well?"
+echo -n "This is useful for maximum compatibility with the oldest PCs. [y/n]: "
+read ans
+if [[ $ans =~ ^[Yy] ]]; then
+  wget -nc $BITSAVERS/pdf/ibm/pc/pc/6025008_PC_Technical_Reference_Aug81.pdf -O $PC_DOC_NAME
+  PC_MANUAL=1
+fi
+
+echo -n "Do you want the (modern) Intel Optimization Manual? [y/n]: "
 read ans
 if [[ $ans =~ ^[Yy] ]]; then
   wget -nc --no-check-certificate https://cdrdv2-public.intel.com/671488/248966-Software-Optimization-Manual-V1-048.pdf -O Intel_Optimization_Manual.pdf
 fi
 
 VGA_MANUAL=0
-echo -n "Do you want the IBM VGA (Graphics Adapter) Manual? (not used in this repo) [y/n]: "
+echo -n "Do you want the 1992 IBM VGA (Graphics Adapter) Manual? [y/n]: "
 read ans
 if [[ $ans =~ ^[Yy] ]]; then
   VGA_MANUAL=1
-  wget -nc http://bitsavers.trailing-edge.com/pdf/ibm/pc/cards/IBM_VGA_XGA_Technical_Reference_Manual_May92.pdf -O $VGA_DOC_NAME
+  wget -nc $BITSAVERS/pdf/ibm/pc/cards/IBM_VGA_XGA_Technical_Reference_Manual_May92.pdf -O $VGA_DOC_NAME
 fi
 
-echo -n "Add bookmarks to the IBM BIOS manual? (using pdflatex) [y/n]: "
+echo -n "Add bookmarks to the manuals? (using pdflatex) [y/n]: "
 read ans
 if [[ $ans =~ ^[Yy] ]]; then
   echo
@@ -34,6 +59,14 @@ if [[ $ans =~ ^[Yy] ]]; then
     "\\def\\filename{$BIOS_DOC_NAME}\\input{add_bookmarks_to_bios_manual.tex}" \
     && rm temp.{log,aux} \
     && rm $BIOS_DOC_NAME && mv temp.pdf $BIOS_DOC_NAME
+
+  if [ $PC_MANUAL -eq 1 ]; then
+    pdflatex --jobname=temp --interaction=batchmode \
+      "\\def\\filename{$PC_DOC_NAME}\\input{add_bookmarks_to_pc_manual.tex}" \
+      && rm temp.{log,aux} \
+      && rm $PC_DOC_NAME && mv temp.pdf $PC_DOC_NAME
+  fi
+
   #if [ $VGA_MANUAL -eq 1 ]; then
   #  pdflatex --jobname=temp --interaction=batchmode \
   #    "\\def\\filename{$VGA_DOC_NAME}\\input{add_bookmarks_to_vga_manual.tex}" \
@@ -41,3 +74,61 @@ if [[ $ans =~ ^[Yy] ]]; then
   #    && rm $VGA_DOC_NAME && mv temp.pdf $VGA_DOC_NAME
   #fi
 fi
+
+####
+# IBM
+####
+
+# First edition BIOS manual
+# https://bitsavers.trailing-edge.com/pdf/ibm/pc/ps2/PS2_and_PC_BIOS_Interface_Technical_Reference_Apr87.pdf
+
+# Second edition BIOS
+# wget -nc http://bitsavers.trailing-edge.com/pdf/ibm/pc/ps2/15F0306_PS2_and_PC_BIOS_Interface_Technical_Reference_May88.pdf -O $BIOS_DOC_NAME
+
+# Original PC Technical Manual (1st edition)
+# https://bitsavers.trailing-edge.com/pdf/ibm/pc/pc/6025008_PC_Technical_Reference_Aug81.pdf
+
+# Original PC Technical Manual (2nd edition)
+# https://bitsavers.trailing-edge.com/pdf/ibm/pc/pc/1502234_PC_Technical_Reference_Apr83.pdf
+
+# Original PC operations manual
+# https://ibm-pc.org/manuals/ibm/5150/IBM_5150_Guide_to_Operations_6322510_APR84.pdf
+
+# MDA
+# https://minuszerodegrees.net/oa/OA%20-%20IBM%20Monochrome%20Display%20and%20Printer%20Adapter.pdf
+# CGA
+# https://minuszerodegrees.net/oa/OA%20-%20IBM%20Color%20Graphics%20Monitor%20Adapter%20(CGA).pdf
+# EGA
+# https://minuszerodegrees.net/oa/OA%20-%20IBM%20Enhanced%20Color%20Display%20(5154).pdf
+
+####
+# INTEL
+###
+
+# First ever intel x86 manual: (from the SDK-86 devkit release of the 8086)
+# ISIS II was an intel OS before the IBM PC and it's how IBM developed the BIOS
+# See https://www.os2museum.com/wp/the-ibm-pc-bios-and-intel-isis-ii/
+# https://bitsavers.org/pdf/intel/ISIS_II/9800640A_MCS-86_Assembly_Language_Reference_Manual_Apr79.pdf
+
+# x86 quick reference card from the devkit:
+# http://bitsavers.org/components/intel/8086/9800749-1_MCS-86_Assembly_Language_Reference_Guide_Oct78.pdf
+
+# the 8086 family users manual
+# Main manual after the early SDK one. Covers the FPU.
+# http://www.bitsavers.org/components/intel/8086/9800722-03_The_8086_Family_Users_Manual_Oct79.pdf
+
+# interesting article about the devkit
+# https://www.progettosnaps.net/manuals/pdf/sdk86.pdf
+
+# 1981 An Introduction to ASM86
+# https://ia902200.us.archive.org/31/items/introductiontoas00inte/introductiontoas00inte.pdf
+# https://mark-ogden.uk/files/intel/publications/121689-001%20An%20Introduction%20To%20ASM86-Sep81.pdf
+
+# 8088 features manual
+# http://bitsavers.org/components/intel/8086/210200_iAPX88_Book_1981.pdf
+
+# 8086 and 8088 users manual
+# http://bitsavers.org/components/intel/8086/1981_iAPX_86_88_Users_Manual.pdf
+
+# 1985 (original edition 1981) ASM86 Language Manual
+# https://bitsavers.org/pdf/intel/ISIS_II/121703-003_ASM86_Language_Reference_Manual_Mar85.pdf
