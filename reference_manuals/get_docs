@@ -47,32 +47,21 @@ if [[ $ans =~ ^[Yy] ]]; then
   wget -nc $BITSAVERS/pdf/ibm/pc/cards/IBM_VGA_XGA_Technical_Reference_Manual_May92.pdf -O $VGA_DOC_NAME
 fi
 
-echo -n "Add bookmarks to the manuals? (using pdflatex) [y/n]: "
+echo -n "Add bookmarks to the manuals? [y/n]: "
 read ans
 if [[ $ans =~ ^[Yy] ]]; then
-  echo
-  echo "Uses the packages: inputenc, pdfpages, bookmark, hyperref"
-  echo "You may have to install them and run this script again"
-  echo
-
-  pdflatex --jobname=temp --interaction=batchmode \
-    "\\def\\filename{$BIOS_DOC_NAME}\\input{add_bookmarks_to_bios_manual.tex}" \
-    && rm temp.{log,aux} \
-    && rm $BIOS_DOC_NAME && mv temp.pdf $BIOS_DOC_NAME
-
-  if [ $PC_MANUAL -eq 1 ]; then
-    pdflatex --jobname=temp --interaction=batchmode \
-      "\\def\\filename{$PC_DOC_NAME}\\input{add_bookmarks_to_pc_manual.tex}" \
-      && rm temp.{log,aux} \
-      && rm $PC_DOC_NAME && mv temp.pdf $PC_DOC_NAME
+  HASH=$(openssl dgst -md5 $BIOS_DOC_NAME | cut -d' ' -f 2)
+  if [ "$HASH" != "efb4a494527d244c717874af374da432" ]; then
+    echo "$BIOS_DOC_NAME did not match the expected hash."
+    exit 1
+  else
+    cat $BIOS_DOC_NAME $BIOS_DOC_NAME.trailer > temp.pdf
+    mv temp.pdf $BIOS_DOC_NAME
   fi
 
-  #if [ $VGA_MANUAL -eq 1 ]; then
-  #  pdflatex --jobname=temp --interaction=batchmode \
-  #    "\\def\\filename{$VGA_DOC_NAME}\\input{add_bookmarks_to_vga_manual.tex}" \
-  #    && rm temp.{log,aux} \
-  #    && rm $VGA_DOC_NAME && mv temp.pdf $VGA_DOC_NAME
-  #fi
+#  if [ $PC_MANUAL -eq 1 ]; then
+#    cat $PC_DOC_NAME $PC_DOC_NAME.trailer > $PC_DOC_NAME
+#  fi
 fi
 
 ####

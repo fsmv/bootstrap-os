@@ -1,0 +1,268 @@
+page,level,ypos,open,title,chapter_prefix(optional)
+1,,,,IBM PS/2 & PC BIOS Interface Technical Reference,
+1,0,609.6,+,BIOS,cover
+2,,,,,roman
+  4,1,610.56,+,Preface
+  8,1,611.28,-,Contents
+    10,2,612,+,Figures - BIOS
+  12,1,611.28,+,Introduction to BIOS,1-
+    14,2,570,+,Introduction
+    14,2,385,+,Interrupts
+    14,2,210,+,Parameter Passing
+    15,2,410,+,Data Areas and ROM Tables
+    15,2,260,+,BIOS Level Determination
+    16,2,390,+,System Groups
+  18,1,610.56,+,Interrupts,2-
+    20,2,570,+,Interrupts Table (Fig. 2-1)
+    22,2,565,+,int 02H - Nonmaskable Interrupt (NMI)
+    24,2,560,+,int 05H - Print Screen
+    25,2,560,+,int 08H - System Timer
+    26,2,560,+,int 09H - Keyboard
+    28,2,560,-,int 10H - Video
+      29,3,570,+,ah = 00H - Set Mode
+      33,3,435,+,ah = 01H - Set Cursor Type
+      33,3,270,+,ah = 02H - Set Cursor Position
+      33,3,200,+,ah = 03H - Read Cursor Position
+      34,3,565,+,ah = 04H - Read Light Pen Position
+      34,3,345,+,ah = 05H - Select Active Display Page
+      35,3,565,+,ah = 06H - Scroll Active Page Up
+      35,3,480,+,ah = 07H - Scroll Active Page Down
+      35,3,390,+,ah = 08H - Read Attr/Char at Current Cursor Position
+      35,3,295,+,ah = 09H - Write Attr/Char at Current Cursor Position
+      36,3,445,+,ah = 0AH - Write Character at Current Cursor Position
+      36,3,350,+,ah = 0BH - Set Color Palette
+      37,3,570,+,ah = 0CH - Write Dot
+      37,3,395,+,ah = 0DH - Read Dot
+      37,3,245,+,ah = 0EH - Write Teletype to Active Page
+      38,3,565,+,ah = 0FH - Read Current Video State
+      38,3,470,+,ah = 10H - Set Palette Registers
+      42,3,414,+,ah = 11H - Character Generator
+      50,3,575,+,ah = 12H - Alternate Select
+      54,3,450,+,ah = 13H - Write String
+      55,3,575,+,ah = 14H - Load LCD Character Font
+      55,3,235,+,ah = 15H - Return Physical Display Parameters for Active Display
+      56,3,270,+,ah = 1AH - Read/Write Display Combination Code
+      58,3,570,+,ah = 1BH - Return Functionality/State Information
+      62,3,565,+,ah = 1CH - Save/Restore Video State
+    63,2,560,+,int 11H - Equipment Determination
+    64,2,565,+,int 12H - Memory Size Determination
+    65,2,565,-,int 13H - Diskette
+      66,3,570,+,ah = 00H - Read Diskette System
+      66,3,200,+,ah = 01H - Read Status of Last Operation
+      67,3,570,+,ah = 02H - Read Desired Sectors into Memory
+      67,3,345,+,ah = 03H - Write Desired Sectors from Memory
+      68,3,570,+,ah = 04H - Verify Desired Sectors
+      68,3,280,+,ah = 05H - Format Desired Track
+      69,3,290,+,ah = 08H - Read Drive Parameters
+      71,3,550,+,ah = 15H - Read DASD Type
+      71,3,275,+,ah = 16H - Diskette Change Line Status
+      72,3,475,+,ah = 17H - Set DASD Type for Format
+      73,3,475,+,ah = 18H - Set Media Type for Format
+    75,2,570,-,int 13H - Fixed Disk
+      76,3,465,+,ah = 00H - Reset Disk System
+      77,3,515,+,ah = 01H - Read Status of Last Operation
+      77,3,370,+,ah = 02H - Read Desired Sectors into Memory
+      78,3,570,+,ah = 03H - Write Desired Sectors from Memory
+      78,3,350,+,ah = 04H - Verify Desired Sectors
+      79,3,575,+,ah = 05H - Format Desired Cylinder
+      80,3,570,+,ah = 06H - Format Desired Cylinder and Set Bad Sector Flags
+      80,3,235,+,ah = 07H - Format Drive Starting at Desired Cylinder
+      81,3,460,+,ah = 08H - Read Drive Parameters
+      81,3,265,+,ah = 09H - Initialize Drive Pair Characteristics
+      82,3,285,+,ah = 0CH - Seek
+      83,3,570,+,ah = 0DH - Alternate Disk Reset
+      83,3,400,+,ah = 10H - Test Drive Ready
+      83,3,284,+,ah = 11H - Recalibrate
+      84,3,570,+,ah = 15H - Read DASD Type
+      84,3,300,+,ah = 19H - Park Heads
+      84,3,110,+,ah = 1AH - Format Unit
+    86,2,565,-,int 14H - Asynchronous Communications
+      86,3,390,+,ah = 00H - Initialize the Communications Port
+      87,3,335,+,ah = 01H - Send Character
+      87,3,220,+,ah = 02H - Receive Character
+      88,3,570,+,ah = 03H - Read Status
+      88,3,465,+,ah = 04H - Extended Initialize
+      89,3,570,+,ah = 05H - Extended Communications Port Control
+    90,2,565,-,int 15H - System Services
+       91,3,570,+,ah = 00H - Turn Cassette Motor On
+       91,3,405,+,ah = 01H - Turn Cassette Motor Off
+       91,3,245,+,ah = 02H - Read Blocks from Cassette
+       92,3,500,+,ah = 03H - Write Blocks to Cassette
+       92,3,235,+,ah = 0FH - Format Unit Periodic Interrupt
+       93,3,415,+,ah = 21H - Power-On Self-Test Error Log
+       94,3,480,+,ah = 40H - Read/Modify Profiles
+       95,3,570,+,ah = 41H - Wait for External Event
+       95,3,130,+,ah = 42H - Request System Power-Off
+       96,3,375,+,ah = 43H - Read System Status
+       97,3,570,+,ah = 44H - Activate/Deactivate Internal Modem Power
+       97,3,265,+,ah = 4FH - Keyboard Intercept
+       98,3,340,+,ah = 80H - Device Open
+       99,3,570,+,ah = 81H - Device Close
+       99,3,350,+,ah = 82H - Program Termination
+       99,3,145,+,ah = 83H - Event Wait
+      100,3,130,+,ah = 84H - Joystick Support
+      101,3,310,+,ah = 85H - System Request Key Pressed
+      102,3,565,+,ah = 86H - Wait
+      102,3,350,+,ah = 87H - Move Block
+      104,3,130,+,ah = 88H - Extended Memory Size Determine
+      105,3,385,+,ah = 89H - Switch Processor to Protected Mode
+      108,3,415,+,ah = 90H - Device Busy
+      109,3,390,+,ah = 91H - Interrupt Complete
+      109,3,150,+,ah = C0H - Return System Configuration Parameters
+      111,3,125,+,ah = C1H - Return Extended BIOS Data Area Segment Address
+      112,3,420,+,ah = C2H - Pointing Device BIOS Interface
+      116,3,240,+,ah = C3H - Enable/Disable Watchdog Time-Out
+      117,3,450,+,ah = C4H - Programmable Option Select
+    119,2,565,-,int 16H - Keyboard
+      121,3,570,+,ah = 00H - Keyboard Read
+      121,3,270,+,ah = 01H - Keystroke Status
+      122,3,570,+,ah = 02H - Shift Status
+      122,3,425,+,ah = 03H - Set Typematic Rate
+      123,3,215,+,ah = 04H - Keyboard Click Adjustment
+      123,3,110,+,ah = 05H - Keyboard Write
+      124,3,450,+,ah = 09H - Keyboard Functionality Determination
+      125,3,570,+,ah = 10H - Extended Keyboard Read
+      125,3,375,+,ah = 11H - Extended Keystroke Status
+      126,3,570,+,ah = 12H - Extended Shift Status
+    127,2,565,-,int 17H - Printer
+      127,3,420,+,ah = 00H - Print Character
+      127,3,250,+,ah = 01H - Initialize the Printer Port
+      128,3,565,+,ah = 02H - Read Status
+    130,2,565,+,int 19H - Bootstrap Loader
+    131,2,565,-,int 1AH - System-Timer and Real-Time Clock Services
+      131,3,245,+,ah = 00H - Read System-Timer Time Counter
+      132,3,570,+,ah = 01H - Set System-Timer Time Counter
+      132,3,470,+,ah = 02H - Read Real-Time Clock Time
+      133,3,575,+,ah = 03H - Set Real-Time Clock Time
+      133,3,420,+,ah = 04H - Read Real-Time Clock Date
+      133,3,250,+,ah = 05H - Set Real-Time Clock Date
+      134,3,565,+,ah = 06H - Set Real-Time Clock Alarm
+      134,3,305,+,ah = 07H - Reset Real-Time Clock Alarm
+      135,3,570,+,ah = 08H - Set Real-Time Clock Activated Power-On Mode
+      135,3,345,+,ah = 09H - Read Real-Time Clock Alarm Time and Status
+      136,3,580,+,ah = 0AH - Read System-Timer Day Counter
+      136,3,380,+,ah = 0BH - Set System-Timer Day Counter
+      137,3,580,+,ah = 80H - Set Up Sound Multiplexer
+    138,2,570,+,int 70H - Real-Time Clock Interrupt
+  140,1,610.56,+,Data Areas and ROM Tables,3-
+    142,2,565,+,BIOS Data Area
+    156,2,265,+,Extended BIOS Data Area
+    157,2,565,+,ROM Tables
+      157,3,480,+,Fixed Disk Drive Parameter Table
+      165,3,575,+,Diskette Drive Parameter Table
+  166,1,610,+,Additional Information,4-
+    168,2,565,-,Interrupt Sharing
+      168,3,475,+,Precautions
+      169,3,520,+,Interrupt Request (IRQn) Reset
+      169,3,335,+,Interrupt-Sharing Software Requirements
+      171,3,415,+,Interrupt-Sharing Chaining Structure and Signature
+      172,3,500,+,ROM Considerations
+      172,3,335,+,Implementation Information
+    177,2,565,+,Adapter ROM
+    179,2,565,-,Video Function Compatibility
+      179,3,490,+,Video Presence Test
+      180,3,570,+,Video Mode Switching
+    181,2,565,+,Multitasking Provisions
+    183,2,570,+,System Identification
+    184,2,565,-,Application Guidelines
+      184,3,450,+,Math Coprocessor Testing
+      184,3,385,+,Hardware Interrupts
+      186,3,535,+,Programming Considerations
+      186,3,360,+,BIOS and Operating System Function Calls
+    189,2,570,+,Scan Code/Character Code Combinations
+  200,1,607,+,Index,X-
+210,0,610,-,Advanced BIOS,roman
+  210,1,560,+,Contents
+  214,1,608,+,Introduction to Advanced BIOS,1-
+    216,2,565,+,Introduction
+    217,2,350,+,Data Structures
+    218,2,470,+,Initialization
+    219,2,395,+,Transfer Conventions
+    220,2,220,+,Interrupt Processing
+    221,2,565,+,Extending ABIOS
+  222,1,608,+,Data Structures,2-
+    224,2,560,+,Introduction
+    224,2,325,+,Common Data Area
+    228,2,560,+,Function Transfer Table
+    230,2,240,+,Device Block
+  236,1,608,+,Initialization,3-
+    238,2,565,+,Introduction
+    239,2,570,+,Build System Parameters Table - Operating System
+    239,2,280,+,Build System Parameters Table - BIOS
+    241,2,570,+,Build Initialization Table - Operating System
+    241,2,205,+,Build Initialization Table - BIOS
+    244,2,565,+,Build Common Data Area - Operating System
+    245,2,565,+,Initialize Pointers - Operating System
+    246,2,340,+,Initialize Data Structures - ABIOS
+    248,2,565,+,Logical ID 2 Initialization
+    249,2,565,+,Build Protected Mode Tables
+  252,1,608,+,Transfer Conventions,4-
+    254,2,565,+,Introduction
+    254,2,414,-,Request Block
+      256,3,570,+,Functional Parameters
+      256,3,445,+,Service Specific Parameters
+    265,2,570,+,ABIOS Transfer Convention
+    267,2,490,+,Operating System Transfer Convention
+  270,1,608,+,Additional Information,5-
+    272,2,565,+,Interrupt Processing
+      272,3,525,+,Interrupt Flow
+      272,3,230,+,Interrupt Sharing
+      274,3,130,+,Default Interrupt Handler
+    275,2,320,-,Adding\, Patching\, Extending\, and Replacing
+      276,3,300,+,Adapter ROM Structure
+      278,3,385,+,RAM Extension Structure
+      281,3,575,+,Adding
+      281,3,290,+,Patching
+      283,3,370,+,Extending
+      285,3,325,+,Replacing
+      287,3,570,+,Considerations for RAM Extensions
+    289,2,565,+,Operating Systems Implementation Considerations
+      289,3,515,+,ABIOS Rules
+      291,3,570,+,Considerations for Bimodal Implementations
+  296,1,608,+,Interfaces,6-
+    298,2,570,+,Introduction
+    300,2,570,-,Diskette
+      313,3,575,+,Return Codes
+      313,3,225,+,Programming Considerations
+    316,2,565,-,Disk
+      324,3,575,+,Return Codes
+      326,3,570,+,Programming Considerations
+    328,2,565,-,Video
+      343,3,575,+,Return Codes
+      343,3,430,+,Video Modes
+    344,2,570,-,Keyboard
+      353,3,575,+,Return Codes
+      353,3,205,+,Programming Considerations
+    356,2,560,-,Parallel Port
+      361,3,295,+,Return Codes
+      362,3,575,+,Programming Considerations
+    364,2,565,-,Asynchronous Communications
+      386,3,385,+,Return Codes
+      386,3,190,+,Programming Considerations
+    392,2,565,-,System Timer
+      393,3,575,+,Return Codes
+      393,3,420,+,Programming Considerations
+    394,2,565,-,Real-Time Clock
+      402,3,315,+,Return Codes
+      402,3,135,+,Programming Considerations
+    404,2,565,-,System Services
+      407,3,290,+,Return Codes
+    408,2,570,-,Nonmaskable Interrupt (NMI)
+      410,3,360,+,Return Codes
+    412,2,565,-,Pointing Device
+      418,3,575,+,Return Codes
+      419,3,575,+,Programming Considerations
+    420,2,565,-,Nonvolatile Random Access Memory (NVRAM)
+      423,3,300,+,Return Codes
+      423,3,135,+,Programming Considerations
+    424,2,565,-,Direct Memory Access (DMA)
+      431,3,570,+,Return Codes
+      431,3,350,+,Programming Considerations
+    434,2,565,-,Programmable Option Select (POS)
+      439,3,575,+,Return Codes
+    440,2,565,-,Keyboard Security
+      445,3,575,+,Return Codes
+  446,1,610,+,Index,X-
+  460,,,,,roman
+  462,1,455,+,Asynchronous Communications Supplement
+  464,1,440,+,Programmable Option Select Supplement

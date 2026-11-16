@@ -1,0 +1,2478 @@
+
+4479 0 obj
+<< /AcroForm 3500 0 R /Metadata 3501 0 R /OpenAction [ 4 0 R /Fit ] /PageLayout /SinglePage /PageMode /UseOutlines /Pages 1 0 R /Type /Catalog 
+  /Outlines 4482 0 R
+  /PageLabels 4481 0 R
+>>
+endobj
+4480 0 obj
+<< /CreationDate (D:20150501170448-08'00') /ModDate (D:20150501172707-07'00') /Producer (Acrobat 11.0.10 Paper Capture Plug-in) 
+  /Title (IBM PS/2 & PC BIOS Interface Technical Reference)
+>>
+endobj
+4481 0 obj
+<<
+/Nums [
+  0 << /P (Cover) >>
+  1 << /S /r >>
+  11 << /P (1-) /S /D >>
+  17 << /P (2-) /S /D >>
+  139 << /P (3-) /S /D >>
+  165 << /P (4-) /S /D >>
+  199 << /P (X-) /S /D >>
+  209 << /S /r >>
+  213 << /P (1-) /S /D >>
+  221 << /P (2-) /S /D >>
+  235 << /P (3-) /S /D >>
+  251 << /P (4-) /S /D >>
+  269 << /P (5-) /S /D >>
+  295 << /P (6-) /S /D >>
+  445 << /P (X-) /S /D >>
+  459 << /S /r >>
+]
+>>
+endobj
+4482 0 obj
+<<
+  /Type /Outlines
+  /Count 44
+  /First 4483 0 R
+  /Last 4653 0 R
+>>
+endobj
+4483 0 obj
+<<
+  /Title (BIOS)
+  /Parent 4482 0 R
+  /Dest [ 4 0 R /XYZ null 609.6 null ]
+  /Count 42
+  /Next 4653 0 R
+  /First 4484 0 R
+  /Last 4652 0 R
+>>
+endobj
+4484 0 obj
+<<
+  /Title (Preface)
+  /Parent 4483 0 R
+  /Dest [ 19 0 R /XYZ null 610.56 null ]
+  /Next 4485 0 R
+>>
+endobj
+4485 0 obj
+<<
+  /Title (Contents)
+  /Parent 4483 0 R
+  /Dest [ 39 0 R /XYZ null 611.28 null ]
+  /Count -1
+  /Next 4487 0 R
+  /Prev 4484 0 R
+  /First 4486 0 R
+  /Last 4486 0 R
+>>
+endobj
+4486 0 obj
+<<
+  /Title (Figures - BIOS)
+  /Parent 4485 0 R
+  /Dest [ 49 0 R /XYZ null 612 null ]
+>>
+endobj
+4487 0 obj
+<<
+  /Title (Introduction to BIOS)
+  /Parent 4483 0 R
+  /Dest [ 59 0 R /XYZ null 611.28 null ]
+  /Count 6
+  /Next 4494 0 R
+  /Prev 4485 0 R
+  /First 4488 0 R
+  /Last 4493 0 R
+>>
+endobj
+4488 0 obj
+<<
+  /Title (Introduction)
+  /Parent 4487 0 R
+  /Dest [ 69 0 R /XYZ null 570 null ]
+  /Next 4489 0 R
+>>
+endobj
+4489 0 obj
+<<
+  /Title (Interrupts)
+  /Parent 4487 0 R
+  /Dest [ 69 0 R /XYZ null 385 null ]
+  /Next 4490 0 R
+  /Prev 4488 0 R
+>>
+endobj
+4490 0 obj
+<<
+  /Title (Parameter Passing)
+  /Parent 4487 0 R
+  /Dest [ 69 0 R /XYZ null 210 null ]
+  /Next 4491 0 R
+  /Prev 4489 0 R
+>>
+endobj
+4491 0 obj
+<<
+  /Title (Data Areas and ROM Tables)
+  /Parent 4487 0 R
+  /Dest [ 74 0 R /XYZ null 410 null ]
+  /Next 4492 0 R
+  /Prev 4490 0 R
+>>
+endobj
+4492 0 obj
+<<
+  /Title (BIOS Level Determination)
+  /Parent 4487 0 R
+  /Dest [ 74 0 R /XYZ null 260 null ]
+  /Next 4493 0 R
+  /Prev 4491 0 R
+>>
+endobj
+4493 0 obj
+<<
+  /Title (System Groups)
+  /Parent 4487 0 R
+  /Dest [ 79 0 R /XYZ null 390 null ]
+  /Prev 4492 0 R
+>>
+endobj
+4494 0 obj
+<<
+  /Title (Interrupts)
+  /Parent 4483 0 R
+  /Dest [ 89 0 R /XYZ null 610.56 null ]
+  /Count 17
+  /Next 4626 0 R
+  /Prev 4487 0 R
+  /First 4495 0 R
+  /Last 4625 0 R
+>>
+endobj
+4495 0 obj
+<<
+  /Title (Interrupts Table \(Fig. 2-1\))
+  /Parent 4494 0 R
+  /Dest [ 99 0 R /XYZ null 570 null ]
+  /Next 4496 0 R
+>>
+endobj
+4496 0 obj
+<<
+  /Title (int 02H - Nonmaskable Interrupt \(NMI\))
+  /Parent 4494 0 R
+  /Dest [ 109 0 R /XYZ null 565 null ]
+  /Next 4497 0 R
+  /Prev 4495 0 R
+>>
+endobj
+4497 0 obj
+<<
+  /Title (int 05H - Print Screen)
+  /Parent 4494 0 R
+  /Dest [ 119 0 R /XYZ null 560 null ]
+  /Next 4498 0 R
+  /Prev 4496 0 R
+>>
+endobj
+4498 0 obj
+<<
+  /Title (int 08H - System Timer)
+  /Parent 4494 0 R
+  /Dest [ 124 0 R /XYZ null 560 null ]
+  /Next 4499 0 R
+  /Prev 4497 0 R
+>>
+endobj
+4499 0 obj
+<<
+  /Title (int 09H - Keyboard)
+  /Parent 4494 0 R
+  /Dest [ 129 0 R /XYZ null 560 null ]
+  /Next 4500 0 R
+  /Prev 4498 0 R
+>>
+endobj
+4500 0 obj
+<<
+  /Title (int 10H - Video)
+  /Parent 4494 0 R
+  /Dest [ 139 0 R /XYZ null 560 null ]
+  /Count -25
+  /Next 4526 0 R
+  /Prev 4499 0 R
+  /First 4501 0 R
+  /Last 4525 0 R
+>>
+endobj
+4501 0 obj
+<<
+  /Title (ah = 00H - Set Mode)
+  /Parent 4500 0 R
+  /Dest [ 144 0 R /XYZ null 570 null ]
+  /Next 4502 0 R
+>>
+endobj
+4502 0 obj
+<<
+  /Title (ah = 01H - Set Cursor Type)
+  /Parent 4500 0 R
+  /Dest [ 164 0 R /XYZ null 435 null ]
+  /Next 4503 0 R
+  /Prev 4501 0 R
+>>
+endobj
+4503 0 obj
+<<
+  /Title (ah = 02H - Set Cursor Position)
+  /Parent 4500 0 R
+  /Dest [ 164 0 R /XYZ null 270 null ]
+  /Next 4504 0 R
+  /Prev 4502 0 R
+>>
+endobj
+4504 0 obj
+<<
+  /Title (ah = 03H - Read Cursor Position)
+  /Parent 4500 0 R
+  /Dest [ 164 0 R /XYZ null 200 null ]
+  /Next 4505 0 R
+  /Prev 4503 0 R
+>>
+endobj
+4505 0 obj
+<<
+  /Title (ah = 04H - Read Light Pen Position)
+  /Parent 4500 0 R
+  /Dest [ 169 0 R /XYZ null 565 null ]
+  /Next 4506 0 R
+  /Prev 4504 0 R
+>>
+endobj
+4506 0 obj
+<<
+  /Title (ah = 05H - Select Active Display Page)
+  /Parent 4500 0 R
+  /Dest [ 169 0 R /XYZ null 345 null ]
+  /Next 4507 0 R
+  /Prev 4505 0 R
+>>
+endobj
+4507 0 obj
+<<
+  /Title (ah = 06H - Scroll Active Page Up)
+  /Parent 4500 0 R
+  /Dest [ 174 0 R /XYZ null 565 null ]
+  /Next 4508 0 R
+  /Prev 4506 0 R
+>>
+endobj
+4508 0 obj
+<<
+  /Title (ah = 07H - Scroll Active Page Down)
+  /Parent 4500 0 R
+  /Dest [ 174 0 R /XYZ null 480 null ]
+  /Next 4509 0 R
+  /Prev 4507 0 R
+>>
+endobj
+4509 0 obj
+<<
+  /Title (ah = 08H - Read Attr/Char at Current Cursor Position)
+  /Parent 4500 0 R
+  /Dest [ 174 0 R /XYZ null 390 null ]
+  /Next 4510 0 R
+  /Prev 4508 0 R
+>>
+endobj
+4510 0 obj
+<<
+  /Title (ah = 09H - Write Attr/Char at Current Cursor Position)
+  /Parent 4500 0 R
+  /Dest [ 174 0 R /XYZ null 295 null ]
+  /Next 4511 0 R
+  /Prev 4509 0 R
+>>
+endobj
+4511 0 obj
+<<
+  /Title (ah = 0AH - Write Character at Current Cursor Position)
+  /Parent 4500 0 R
+  /Dest [ 179 0 R /XYZ null 445 null ]
+  /Next 4512 0 R
+  /Prev 4510 0 R
+>>
+endobj
+4512 0 obj
+<<
+  /Title (ah = 0BH - Set Color Palette)
+  /Parent 4500 0 R
+  /Dest [ 179 0 R /XYZ null 350 null ]
+  /Next 4513 0 R
+  /Prev 4511 0 R
+>>
+endobj
+4513 0 obj
+<<
+  /Title (ah = 0CH - Write Dot)
+  /Parent 4500 0 R
+  /Dest [ 184 0 R /XYZ null 570 null ]
+  /Next 4514 0 R
+  /Prev 4512 0 R
+>>
+endobj
+4514 0 obj
+<<
+  /Title (ah = 0DH - Read Dot)
+  /Parent 4500 0 R
+  /Dest [ 184 0 R /XYZ null 395 null ]
+  /Next 4515 0 R
+  /Prev 4513 0 R
+>>
+endobj
+4515 0 obj
+<<
+  /Title (ah = 0EH - Write Teletype to Active Page)
+  /Parent 4500 0 R
+  /Dest [ 184 0 R /XYZ null 245 null ]
+  /Next 4516 0 R
+  /Prev 4514 0 R
+>>
+endobj
+4516 0 obj
+<<
+  /Title (ah = 0FH - Read Current Video State)
+  /Parent 4500 0 R
+  /Dest [ 189 0 R /XYZ null 565 null ]
+  /Next 4517 0 R
+  /Prev 4515 0 R
+>>
+endobj
+4517 0 obj
+<<
+  /Title (ah = 10H - Set Palette Registers)
+  /Parent 4500 0 R
+  /Dest [ 189 0 R /XYZ null 470 null ]
+  /Next 4518 0 R
+  /Prev 4516 0 R
+>>
+endobj
+4518 0 obj
+<<
+  /Title (ah = 11H - Character Generator)
+  /Parent 4500 0 R
+  /Dest [ 209 0 R /XYZ null 414 null ]
+  /Next 4519 0 R
+  /Prev 4517 0 R
+>>
+endobj
+4519 0 obj
+<<
+  /Title (ah = 12H - Alternate Select)
+  /Parent 4500 0 R
+  /Dest [ 249 0 R /XYZ null 575 null ]
+  /Next 4520 0 R
+  /Prev 4518 0 R
+>>
+endobj
+4520 0 obj
+<<
+  /Title (ah = 13H - Write String)
+  /Parent 4500 0 R
+  /Dest [ 269 0 R /XYZ null 450 null ]
+  /Next 4521 0 R
+  /Prev 4519 0 R
+>>
+endobj
+4521 0 obj
+<<
+  /Title (ah = 14H - Load LCD Character Font)
+  /Parent 4500 0 R
+  /Dest [ 274 0 R /XYZ null 575 null ]
+  /Next 4522 0 R
+  /Prev 4520 0 R
+>>
+endobj
+4522 0 obj
+<<
+  /Title (ah = 15H - Return Physical Display Parameters for Active Display)
+  /Parent 4500 0 R
+  /Dest [ 274 0 R /XYZ null 235 null ]
+  /Next 4523 0 R
+  /Prev 4521 0 R
+>>
+endobj
+4523 0 obj
+<<
+  /Title (ah = 1AH - Read/Write Display Combination Code)
+  /Parent 4500 0 R
+  /Dest [ 279 0 R /XYZ null 270 null ]
+  /Next 4524 0 R
+  /Prev 4522 0 R
+>>
+endobj
+4524 0 obj
+<<
+  /Title (ah = 1BH - Return Functionality/State Information)
+  /Parent 4500 0 R
+  /Dest [ 289 0 R /XYZ null 570 null ]
+  /Next 4525 0 R
+  /Prev 4523 0 R
+>>
+endobj
+4525 0 obj
+<<
+  /Title (ah = 1CH - Save/Restore Video State)
+  /Parent 4500 0 R
+  /Dest [ 309 0 R /XYZ null 565 null ]
+  /Prev 4524 0 R
+>>
+endobj
+4526 0 obj
+<<
+  /Title (int 11H - Equipment Determination)
+  /Parent 4494 0 R
+  /Dest [ 314 0 R /XYZ null 560 null ]
+  /Next 4527 0 R
+  /Prev 4500 0 R
+>>
+endobj
+4527 0 obj
+<<
+  /Title (int 12H - Memory Size Determination)
+  /Parent 4494 0 R
+  /Dest [ 319 0 R /XYZ null 565 null ]
+  /Next 4528 0 R
+  /Prev 4526 0 R
+>>
+endobj
+4528 0 obj
+<<
+  /Title (int 13H - Diskette)
+  /Parent 4494 0 R
+  /Dest [ 324 0 R /XYZ null 565 null ]
+  /Count -11
+  /Next 4540 0 R
+  /Prev 4527 0 R
+  /First 4529 0 R
+  /Last 4539 0 R
+>>
+endobj
+4529 0 obj
+<<
+  /Title (ah = 00H - Read Diskette System)
+  /Parent 4528 0 R
+  /Dest [ 329 0 R /XYZ null 570 null ]
+  /Next 4530 0 R
+>>
+endobj
+4530 0 obj
+<<
+  /Title (ah = 01H - Read Status of Last Operation)
+  /Parent 4528 0 R
+  /Dest [ 329 0 R /XYZ null 200 null ]
+  /Next 4531 0 R
+  /Prev 4529 0 R
+>>
+endobj
+4531 0 obj
+<<
+  /Title (ah = 02H - Read Desired Sectors into Memory)
+  /Parent 4528 0 R
+  /Dest [ 334 0 R /XYZ null 570 null ]
+  /Next 4532 0 R
+  /Prev 4530 0 R
+>>
+endobj
+4532 0 obj
+<<
+  /Title (ah = 03H - Write Desired Sectors from Memory)
+  /Parent 4528 0 R
+  /Dest [ 334 0 R /XYZ null 345 null ]
+  /Next 4533 0 R
+  /Prev 4531 0 R
+>>
+endobj
+4533 0 obj
+<<
+  /Title (ah = 04H - Verify Desired Sectors)
+  /Parent 4528 0 R
+  /Dest [ 339 0 R /XYZ null 570 null ]
+  /Next 4534 0 R
+  /Prev 4532 0 R
+>>
+endobj
+4534 0 obj
+<<
+  /Title (ah = 05H - Format Desired Track)
+  /Parent 4528 0 R
+  /Dest [ 339 0 R /XYZ null 280 null ]
+  /Next 4535 0 R
+  /Prev 4533 0 R
+>>
+endobj
+4535 0 obj
+<<
+  /Title (ah = 08H - Read Drive Parameters)
+  /Parent 4528 0 R
+  /Dest [ 344 0 R /XYZ null 290 null ]
+  /Next 4536 0 R
+  /Prev 4534 0 R
+>>
+endobj
+4536 0 obj
+<<
+  /Title (ah = 15H - Read DASD Type)
+  /Parent 4528 0 R
+  /Dest [ 354 0 R /XYZ null 550 null ]
+  /Next 4537 0 R
+  /Prev 4535 0 R
+>>
+endobj
+4537 0 obj
+<<
+  /Title (ah = 16H - Diskette Change Line Status)
+  /Parent 4528 0 R
+  /Dest [ 354 0 R /XYZ null 275 null ]
+  /Next 4538 0 R
+  /Prev 4536 0 R
+>>
+endobj
+4538 0 obj
+<<
+  /Title (ah = 17H - Set DASD Type for Format)
+  /Parent 4528 0 R
+  /Dest [ 359 0 R /XYZ null 475 null ]
+  /Next 4539 0 R
+  /Prev 4537 0 R
+>>
+endobj
+4539 0 obj
+<<
+  /Title (ah = 18H - Set Media Type for Format)
+  /Parent 4528 0 R
+  /Dest [ 364 0 R /XYZ null 475 null ]
+  /Prev 4538 0 R
+>>
+endobj
+4540 0 obj
+<<
+  /Title (int 13H - Fixed Disk)
+  /Parent 4494 0 R
+  /Dest [ 374 0 R /XYZ null 570 null ]
+  /Count -17
+  /Next 4558 0 R
+  /Prev 4528 0 R
+  /First 4541 0 R
+  /Last 4557 0 R
+>>
+endobj
+4541 0 obj
+<<
+  /Title (ah = 00H - Reset Disk System)
+  /Parent 4540 0 R
+  /Dest [ 379 0 R /XYZ null 465 null ]
+  /Next 4542 0 R
+>>
+endobj
+4542 0 obj
+<<
+  /Title (ah = 01H - Read Status of Last Operation)
+  /Parent 4540 0 R
+  /Dest [ 384 0 R /XYZ null 515 null ]
+  /Next 4543 0 R
+  /Prev 4541 0 R
+>>
+endobj
+4543 0 obj
+<<
+  /Title (ah = 02H - Read Desired Sectors into Memory)
+  /Parent 4540 0 R
+  /Dest [ 384 0 R /XYZ null 370 null ]
+  /Next 4544 0 R
+  /Prev 4542 0 R
+>>
+endobj
+4544 0 obj
+<<
+  /Title (ah = 03H - Write Desired Sectors from Memory)
+  /Parent 4540 0 R
+  /Dest [ 389 0 R /XYZ null 570 null ]
+  /Next 4545 0 R
+  /Prev 4543 0 R
+>>
+endobj
+4545 0 obj
+<<
+  /Title (ah = 04H - Verify Desired Sectors)
+  /Parent 4540 0 R
+  /Dest [ 389 0 R /XYZ null 350 null ]
+  /Next 4546 0 R
+  /Prev 4544 0 R
+>>
+endobj
+4546 0 obj
+<<
+  /Title (ah = 05H - Format Desired Cylinder)
+  /Parent 4540 0 R
+  /Dest [ 394 0 R /XYZ null 575 null ]
+  /Next 4547 0 R
+  /Prev 4545 0 R
+>>
+endobj
+4547 0 obj
+<<
+  /Title (ah = 06H - Format Desired Cylinder and Set Bad Sector Flags)
+  /Parent 4540 0 R
+  /Dest [ 399 0 R /XYZ null 570 null ]
+  /Next 4548 0 R
+  /Prev 4546 0 R
+>>
+endobj
+4548 0 obj
+<<
+  /Title (ah = 07H - Format Drive Starting at Desired Cylinder)
+  /Parent 4540 0 R
+  /Dest [ 399 0 R /XYZ null 235 null ]
+  /Next 4549 0 R
+  /Prev 4547 0 R
+>>
+endobj
+4549 0 obj
+<<
+  /Title (ah = 08H - Read Drive Parameters)
+  /Parent 4540 0 R
+  /Dest [ 404 0 R /XYZ null 460 null ]
+  /Next 4550 0 R
+  /Prev 4548 0 R
+>>
+endobj
+4550 0 obj
+<<
+  /Title (ah = 09H - Initialize Drive Pair Characteristics)
+  /Parent 4540 0 R
+  /Dest [ 404 0 R /XYZ null 265 null ]
+  /Next 4551 0 R
+  /Prev 4549 0 R
+>>
+endobj
+4551 0 obj
+<<
+  /Title (ah = 0CH - Seek)
+  /Parent 4540 0 R
+  /Dest [ 409 0 R /XYZ null 285 null ]
+  /Next 4552 0 R
+  /Prev 4550 0 R
+>>
+endobj
+4552 0 obj
+<<
+  /Title (ah = 0DH - Alternate Disk Reset)
+  /Parent 4540 0 R
+  /Dest [ 414 0 R /XYZ null 570 null ]
+  /Next 4553 0 R
+  /Prev 4551 0 R
+>>
+endobj
+4553 0 obj
+<<
+  /Title (ah = 10H - Test Drive Ready)
+  /Parent 4540 0 R
+  /Dest [ 414 0 R /XYZ null 400 null ]
+  /Next 4554 0 R
+  /Prev 4552 0 R
+>>
+endobj
+4554 0 obj
+<<
+  /Title (ah = 11H - Recalibrate)
+  /Parent 4540 0 R
+  /Dest [ 414 0 R /XYZ null 284 null ]
+  /Next 4555 0 R
+  /Prev 4553 0 R
+>>
+endobj
+4555 0 obj
+<<
+  /Title (ah = 15H - Read DASD Type)
+  /Parent 4540 0 R
+  /Dest [ 419 0 R /XYZ null 570 null ]
+  /Next 4556 0 R
+  /Prev 4554 0 R
+>>
+endobj
+4556 0 obj
+<<
+  /Title (ah = 19H - Park Heads)
+  /Parent 4540 0 R
+  /Dest [ 419 0 R /XYZ null 300 null ]
+  /Next 4557 0 R
+  /Prev 4555 0 R
+>>
+endobj
+4557 0 obj
+<<
+  /Title (ah = 1AH - Format Unit)
+  /Parent 4540 0 R
+  /Dest [ 419 0 R /XYZ null 110 null ]
+  /Prev 4556 0 R
+>>
+endobj
+4558 0 obj
+<<
+  /Title (int 14H - Asynchronous Communications)
+  /Parent 4494 0 R
+  /Dest [ 429 0 R /XYZ null 565 null ]
+  /Count -6
+  /Next 4565 0 R
+  /Prev 4540 0 R
+  /First 4559 0 R
+  /Last 4564 0 R
+>>
+endobj
+4559 0 obj
+<<
+  /Title (ah = 00H - Initialize the Communications Port)
+  /Parent 4558 0 R
+  /Dest [ 429 0 R /XYZ null 390 null ]
+  /Next 4560 0 R
+>>
+endobj
+4560 0 obj
+<<
+  /Title (ah = 01H - Send Character)
+  /Parent 4558 0 R
+  /Dest [ 434 0 R /XYZ null 335 null ]
+  /Next 4561 0 R
+  /Prev 4559 0 R
+>>
+endobj
+4561 0 obj
+<<
+  /Title (ah = 02H - Receive Character)
+  /Parent 4558 0 R
+  /Dest [ 434 0 R /XYZ null 220 null ]
+  /Next 4562 0 R
+  /Prev 4560 0 R
+>>
+endobj
+4562 0 obj
+<<
+  /Title (ah = 03H - Read Status)
+  /Parent 4558 0 R
+  /Dest [ 439 0 R /XYZ null 570 null ]
+  /Next 4563 0 R
+  /Prev 4561 0 R
+>>
+endobj
+4563 0 obj
+<<
+  /Title (ah = 04H - Extended Initialize)
+  /Parent 4558 0 R
+  /Dest [ 439 0 R /XYZ null 465 null ]
+  /Next 4564 0 R
+  /Prev 4562 0 R
+>>
+endobj
+4564 0 obj
+<<
+  /Title (ah = 05H - Extended Communications Port Control)
+  /Parent 4558 0 R
+  /Dest [ 444 0 R /XYZ null 570 null ]
+  /Prev 4563 0 R
+>>
+endobj
+4565 0 obj
+<<
+  /Title (int 15H - System Services)
+  /Parent 4494 0 R
+  /Dest [ 449 0 R /XYZ null 565 null ]
+  /Count -29
+  /Next 4595 0 R
+  /Prev 4558 0 R
+  /First 4566 0 R
+  /Last 4594 0 R
+>>
+endobj
+4566 0 obj
+<<
+  /Title (ah = 00H - Turn Cassette Motor On)
+  /Parent 4565 0 R
+  /Dest [ 454 0 R /XYZ null 570 null ]
+  /Next 4567 0 R
+>>
+endobj
+4567 0 obj
+<<
+  /Title (ah = 01H - Turn Cassette Motor Off)
+  /Parent 4565 0 R
+  /Dest [ 454 0 R /XYZ null 405 null ]
+  /Next 4568 0 R
+  /Prev 4566 0 R
+>>
+endobj
+4568 0 obj
+<<
+  /Title (ah = 02H - Read Blocks from Cassette)
+  /Parent 4565 0 R
+  /Dest [ 454 0 R /XYZ null 245 null ]
+  /Next 4569 0 R
+  /Prev 4567 0 R
+>>
+endobj
+4569 0 obj
+<<
+  /Title (ah = 03H - Write Blocks to Cassette)
+  /Parent 4565 0 R
+  /Dest [ 459 0 R /XYZ null 500 null ]
+  /Next 4570 0 R
+  /Prev 4568 0 R
+>>
+endobj
+4570 0 obj
+<<
+  /Title (ah = 0FH - Format Unit Periodic Interrupt)
+  /Parent 4565 0 R
+  /Dest [ 459 0 R /XYZ null 235 null ]
+  /Next 4571 0 R
+  /Prev 4569 0 R
+>>
+endobj
+4571 0 obj
+<<
+  /Title (ah = 21H - Power-On Self-Test Error Log)
+  /Parent 4565 0 R
+  /Dest [ 464 0 R /XYZ null 415 null ]
+  /Next 4572 0 R
+  /Prev 4570 0 R
+>>
+endobj
+4572 0 obj
+<<
+  /Title (ah = 40H - Read/Modify Profiles)
+  /Parent 4565 0 R
+  /Dest [ 469 0 R /XYZ null 480 null ]
+  /Next 4573 0 R
+  /Prev 4571 0 R
+>>
+endobj
+4573 0 obj
+<<
+  /Title (ah = 41H - Wait for External Event)
+  /Parent 4565 0 R
+  /Dest [ 474 0 R /XYZ null 570 null ]
+  /Next 4574 0 R
+  /Prev 4572 0 R
+>>
+endobj
+4574 0 obj
+<<
+  /Title (ah = 42H - Request System Power-Off)
+  /Parent 4565 0 R
+  /Dest [ 474 0 R /XYZ null 130 null ]
+  /Next 4575 0 R
+  /Prev 4573 0 R
+>>
+endobj
+4575 0 obj
+<<
+  /Title (ah = 43H - Read System Status)
+  /Parent 4565 0 R
+  /Dest [ 479 0 R /XYZ null 375 null ]
+  /Next 4576 0 R
+  /Prev 4574 0 R
+>>
+endobj
+4576 0 obj
+<<
+  /Title (ah = 44H - Activate/Deactivate Internal Modem Power)
+  /Parent 4565 0 R
+  /Dest [ 484 0 R /XYZ null 570 null ]
+  /Next 4577 0 R
+  /Prev 4575 0 R
+>>
+endobj
+4577 0 obj
+<<
+  /Title (ah = 4FH - Keyboard Intercept)
+  /Parent 4565 0 R
+  /Dest [ 484 0 R /XYZ null 265 null ]
+  /Next 4578 0 R
+  /Prev 4576 0 R
+>>
+endobj
+4578 0 obj
+<<
+  /Title (ah = 80H - Device Open)
+  /Parent 4565 0 R
+  /Dest [ 489 0 R /XYZ null 340 null ]
+  /Next 4579 0 R
+  /Prev 4577 0 R
+>>
+endobj
+4579 0 obj
+<<
+  /Title (ah = 81H - Device Close)
+  /Parent 4565 0 R
+  /Dest [ 494 0 R /XYZ null 570 null ]
+  /Next 4580 0 R
+  /Prev 4578 0 R
+>>
+endobj
+4580 0 obj
+<<
+  /Title (ah = 82H - Program Termination)
+  /Parent 4565 0 R
+  /Dest [ 494 0 R /XYZ null 350 null ]
+  /Next 4581 0 R
+  /Prev 4579 0 R
+>>
+endobj
+4581 0 obj
+<<
+  /Title (ah = 83H - Event Wait)
+  /Parent 4565 0 R
+  /Dest [ 494 0 R /XYZ null 145 null ]
+  /Next 4582 0 R
+  /Prev 4580 0 R
+>>
+endobj
+4582 0 obj
+<<
+  /Title (ah = 84H - Joystick Support)
+  /Parent 4565 0 R
+  /Dest [ 499 0 R /XYZ null 130 null ]
+  /Next 4583 0 R
+  /Prev 4581 0 R
+>>
+endobj
+4583 0 obj
+<<
+  /Title (ah = 85H - System Request Key Pressed)
+  /Parent 4565 0 R
+  /Dest [ 504 0 R /XYZ null 310 null ]
+  /Next 4584 0 R
+  /Prev 4582 0 R
+>>
+endobj
+4584 0 obj
+<<
+  /Title (ah = 86H - Wait)
+  /Parent 4565 0 R
+  /Dest [ 509 0 R /XYZ null 565 null ]
+  /Next 4585 0 R
+  /Prev 4583 0 R
+>>
+endobj
+4585 0 obj
+<<
+  /Title (ah = 87H - Move Block)
+  /Parent 4565 0 R
+  /Dest [ 509 0 R /XYZ null 350 null ]
+  /Next 4586 0 R
+  /Prev 4584 0 R
+>>
+endobj
+4586 0 obj
+<<
+  /Title (ah = 88H - Extended Memory Size Determine)
+  /Parent 4565 0 R
+  /Dest [ 519 0 R /XYZ null 130 null ]
+  /Next 4587 0 R
+  /Prev 4585 0 R
+>>
+endobj
+4587 0 obj
+<<
+  /Title (ah = 89H - Switch Processor to Protected Mode)
+  /Parent 4565 0 R
+  /Dest [ 524 0 R /XYZ null 385 null ]
+  /Next 4588 0 R
+  /Prev 4586 0 R
+>>
+endobj
+4588 0 obj
+<<
+  /Title (ah = 90H - Device Busy)
+  /Parent 4565 0 R
+  /Dest [ 539 0 R /XYZ null 415 null ]
+  /Next 4589 0 R
+  /Prev 4587 0 R
+>>
+endobj
+4589 0 obj
+<<
+  /Title (ah = 91H - Interrupt Complete)
+  /Parent 4565 0 R
+  /Dest [ 544 0 R /XYZ null 390 null ]
+  /Next 4590 0 R
+  /Prev 4588 0 R
+>>
+endobj
+4590 0 obj
+<<
+  /Title (ah = C0H - Return System Configuration Parameters)
+  /Parent 4565 0 R
+  /Dest [ 544 0 R /XYZ null 150 null ]
+  /Next 4591 0 R
+  /Prev 4589 0 R
+>>
+endobj
+4591 0 obj
+<<
+  /Title (ah = C1H - Return Extended BIOS Data Area Segment Address)
+  /Parent 4565 0 R
+  /Dest [ 554 0 R /XYZ null 125 null ]
+  /Next 4592 0 R
+  /Prev 4590 0 R
+>>
+endobj
+4592 0 obj
+<<
+  /Title (ah = C2H - Pointing Device BIOS Interface)
+  /Parent 4565 0 R
+  /Dest [ 559 0 R /XYZ null 420 null ]
+  /Next 4593 0 R
+  /Prev 4591 0 R
+>>
+endobj
+4593 0 obj
+<<
+  /Title (ah = C3H - Enable/Disable Watchdog Time-Out)
+  /Parent 4565 0 R
+  /Dest [ 579 0 R /XYZ null 240 null ]
+  /Next 4594 0 R
+  /Prev 4592 0 R
+>>
+endobj
+4594 0 obj
+<<
+  /Title (ah = C4H - Programmable Option Select)
+  /Parent 4565 0 R
+  /Dest [ 584 0 R /XYZ null 450 null ]
+  /Prev 4593 0 R
+>>
+endobj
+4595 0 obj
+<<
+  /Title (int 16H - Keyboard)
+  /Parent 4494 0 R
+  /Dest [ 594 0 R /XYZ null 565 null ]
+  /Count -10
+  /Next 4606 0 R
+  /Prev 4565 0 R
+  /First 4596 0 R
+  /Last 4605 0 R
+>>
+endobj
+4596 0 obj
+<<
+  /Title (ah = 00H - Keyboard Read)
+  /Parent 4595 0 R
+  /Dest [ 604 0 R /XYZ null 570 null ]
+  /Next 4597 0 R
+>>
+endobj
+4597 0 obj
+<<
+  /Title (ah = 01H - Keystroke Status)
+  /Parent 4595 0 R
+  /Dest [ 604 0 R /XYZ null 270 null ]
+  /Next 4598 0 R
+  /Prev 4596 0 R
+>>
+endobj
+4598 0 obj
+<<
+  /Title (ah = 02H - Shift Status)
+  /Parent 4595 0 R
+  /Dest [ 609 0 R /XYZ null 570 null ]
+  /Next 4599 0 R
+  /Prev 4597 0 R
+>>
+endobj
+4599 0 obj
+<<
+  /Title (ah = 03H - Set Typematic Rate)
+  /Parent 4595 0 R
+  /Dest [ 609 0 R /XYZ null 425 null ]
+  /Next 4600 0 R
+  /Prev 4598 0 R
+>>
+endobj
+4600 0 obj
+<<
+  /Title (ah = 04H - Keyboard Click Adjustment)
+  /Parent 4595 0 R
+  /Dest [ 614 0 R /XYZ null 215 null ]
+  /Next 4601 0 R
+  /Prev 4599 0 R
+>>
+endobj
+4601 0 obj
+<<
+  /Title (ah = 05H - Keyboard Write)
+  /Parent 4595 0 R
+  /Dest [ 614 0 R /XYZ null 110 null ]
+  /Next 4602 0 R
+  /Prev 4600 0 R
+>>
+endobj
+4602 0 obj
+<<
+  /Title (ah = 09H - Keyboard Functionality Determination)
+  /Parent 4595 0 R
+  /Dest [ 619 0 R /XYZ null 450 null ]
+  /Next 4603 0 R
+  /Prev 4601 0 R
+>>
+endobj
+4603 0 obj
+<<
+  /Title (ah = 10H - Extended Keyboard Read)
+  /Parent 4595 0 R
+  /Dest [ 624 0 R /XYZ null 570 null ]
+  /Next 4604 0 R
+  /Prev 4602 0 R
+>>
+endobj
+4604 0 obj
+<<
+  /Title (ah = 11H - Extended Keystroke Status)
+  /Parent 4595 0 R
+  /Dest [ 624 0 R /XYZ null 375 null ]
+  /Next 4605 0 R
+  /Prev 4603 0 R
+>>
+endobj
+4605 0 obj
+<<
+  /Title (ah = 12H - Extended Shift Status)
+  /Parent 4595 0 R
+  /Dest [ 629 0 R /XYZ null 570 null ]
+  /Prev 4604 0 R
+>>
+endobj
+4606 0 obj
+<<
+  /Title (int 17H - Printer)
+  /Parent 4494 0 R
+  /Dest [ 634 0 R /XYZ null 565 null ]
+  /Count -3
+  /Next 4610 0 R
+  /Prev 4595 0 R
+  /First 4607 0 R
+  /Last 4609 0 R
+>>
+endobj
+4607 0 obj
+<<
+  /Title (ah = 00H - Print Character)
+  /Parent 4606 0 R
+  /Dest [ 634 0 R /XYZ null 420 null ]
+  /Next 4608 0 R
+>>
+endobj
+4608 0 obj
+<<
+  /Title (ah = 01H - Initialize the Printer Port)
+  /Parent 4606 0 R
+  /Dest [ 634 0 R /XYZ null 250 null ]
+  /Next 4609 0 R
+  /Prev 4607 0 R
+>>
+endobj
+4609 0 obj
+<<
+  /Title (ah = 02H - Read Status)
+  /Parent 4606 0 R
+  /Dest [ 639 0 R /XYZ null 565 null ]
+  /Prev 4608 0 R
+>>
+endobj
+4610 0 obj
+<<
+  /Title (int 19H - Bootstrap Loader)
+  /Parent 4494 0 R
+  /Dest [ 649 0 R /XYZ null 565 null ]
+  /Next 4611 0 R
+  /Prev 4606 0 R
+>>
+endobj
+4611 0 obj
+<<
+  /Title (int 1AH - System-Timer and Real-Time Clock Services)
+  /Parent 4494 0 R
+  /Dest [ 654 0 R /XYZ null 565 null ]
+  /Count -13
+  /Next 4625 0 R
+  /Prev 4610 0 R
+  /First 4612 0 R
+  /Last 4624 0 R
+>>
+endobj
+4612 0 obj
+<<
+  /Title (ah = 00H - Read System-Timer Time Counter)
+  /Parent 4611 0 R
+  /Dest [ 654 0 R /XYZ null 245 null ]
+  /Next 4613 0 R
+>>
+endobj
+4613 0 obj
+<<
+  /Title (ah = 01H - Set System-Timer Time Counter)
+  /Parent 4611 0 R
+  /Dest [ 659 0 R /XYZ null 570 null ]
+  /Next 4614 0 R
+  /Prev 4612 0 R
+>>
+endobj
+4614 0 obj
+<<
+  /Title (ah = 02H - Read Real-Time Clock Time)
+  /Parent 4611 0 R
+  /Dest [ 659 0 R /XYZ null 470 null ]
+  /Next 4615 0 R
+  /Prev 4613 0 R
+>>
+endobj
+4615 0 obj
+<<
+  /Title (ah = 03H - Set Real-Time Clock Time)
+  /Parent 4611 0 R
+  /Dest [ 664 0 R /XYZ null 575 null ]
+  /Next 4616 0 R
+  /Prev 4614 0 R
+>>
+endobj
+4616 0 obj
+<<
+  /Title (ah = 04H - Read Real-Time Clock Date)
+  /Parent 4611 0 R
+  /Dest [ 664 0 R /XYZ null 420 null ]
+  /Next 4617 0 R
+  /Prev 4615 0 R
+>>
+endobj
+4617 0 obj
+<<
+  /Title (ah = 05H - Set Real-Time Clock Date)
+  /Parent 4611 0 R
+  /Dest [ 664 0 R /XYZ null 250 null ]
+  /Next 4618 0 R
+  /Prev 4616 0 R
+>>
+endobj
+4618 0 obj
+<<
+  /Title (ah = 06H - Set Real-Time Clock Alarm)
+  /Parent 4611 0 R
+  /Dest [ 669 0 R /XYZ null 565 null ]
+  /Next 4619 0 R
+  /Prev 4617 0 R
+>>
+endobj
+4619 0 obj
+<<
+  /Title (ah = 07H - Reset Real-Time Clock Alarm)
+  /Parent 4611 0 R
+  /Dest [ 669 0 R /XYZ null 305 null ]
+  /Next 4620 0 R
+  /Prev 4618 0 R
+>>
+endobj
+4620 0 obj
+<<
+  /Title (ah = 08H - Set Real-Time Clock Activated Power-On Mode)
+  /Parent 4611 0 R
+  /Dest [ 674 0 R /XYZ null 570 null ]
+  /Next 4621 0 R
+  /Prev 4619 0 R
+>>
+endobj
+4621 0 obj
+<<
+  /Title (ah = 09H - Read Real-Time Clock Alarm Time and Status)
+  /Parent 4611 0 R
+  /Dest [ 674 0 R /XYZ null 345 null ]
+  /Next 4622 0 R
+  /Prev 4620 0 R
+>>
+endobj
+4622 0 obj
+<<
+  /Title (ah = 0AH - Read System-Timer Day Counter)
+  /Parent 4611 0 R
+  /Dest [ 679 0 R /XYZ null 580 null ]
+  /Next 4623 0 R
+  /Prev 4621 0 R
+>>
+endobj
+4623 0 obj
+<<
+  /Title (ah = 0BH - Set System-Timer Day Counter)
+  /Parent 4611 0 R
+  /Dest [ 679 0 R /XYZ null 380 null ]
+  /Next 4624 0 R
+  /Prev 4622 0 R
+>>
+endobj
+4624 0 obj
+<<
+  /Title (ah = 80H - Set Up Sound Multiplexer)
+  /Parent 4611 0 R
+  /Dest [ 684 0 R /XYZ null 580 null ]
+  /Prev 4623 0 R
+>>
+endobj
+4625 0 obj
+<<
+  /Title (int 70H - Real-Time Clock Interrupt)
+  /Parent 4494 0 R
+  /Dest [ 689 0 R /XYZ null 570 null ]
+  /Prev 4611 0 R
+>>
+endobj
+4626 0 obj
+<<
+  /Title (Data Areas and ROM Tables)
+  /Parent 4483 0 R
+  /Dest [ 699 0 R /XYZ null 610.56 null ]
+  /Count 5
+  /Next 4632 0 R
+  /Prev 4494 0 R
+  /First 4627 0 R
+  /Last 4629 0 R
+>>
+endobj
+4627 0 obj
+<<
+  /Title (BIOS Data Area)
+  /Parent 4626 0 R
+  /Dest [ 709 0 R /XYZ null 565 null ]
+  /Next 4628 0 R
+>>
+endobj
+4628 0 obj
+<<
+  /Title (Extended BIOS Data Area)
+  /Parent 4626 0 R
+  /Dest [ 779 0 R /XYZ null 265 null ]
+  /Next 4629 0 R
+  /Prev 4627 0 R
+>>
+endobj
+4629 0 obj
+<<
+  /Title (ROM Tables)
+  /Parent 4626 0 R
+  /Dest [ 784 0 R /XYZ null 565 null ]
+  /Count 2
+  /Prev 4628 0 R
+  /First 4630 0 R
+  /Last 4631 0 R
+>>
+endobj
+4630 0 obj
+<<
+  /Title (Fixed Disk Drive Parameter Table)
+  /Parent 4629 0 R
+  /Dest [ 784 0 R /XYZ null 480 null ]
+  /Next 4631 0 R
+>>
+endobj
+4631 0 obj
+<<
+  /Title (Diskette Drive Parameter Table)
+  /Parent 4629 0 R
+  /Dest [ 824 0 R /XYZ null 575 null ]
+  /Prev 4630 0 R
+>>
+endobj
+4632 0 obj
+<<
+  /Title (Additional Information)
+  /Parent 4483 0 R
+  /Dest [ 829 0 R /XYZ null 610 null ]
+  /Count 7
+  /Next 4652 0 R
+  /Prev 4626 0 R
+  /First 4633 0 R
+  /Last 4651 0 R
+>>
+endobj
+4633 0 obj
+<<
+  /Title (Interrupt Sharing)
+  /Parent 4632 0 R
+  /Dest [ 839 0 R /XYZ null 565 null ]
+  /Count -6
+  /Next 4640 0 R
+  /First 4634 0 R
+  /Last 4639 0 R
+>>
+endobj
+4634 0 obj
+<<
+  /Title (Precautions)
+  /Parent 4633 0 R
+  /Dest [ 839 0 R /XYZ null 475 null ]
+  /Next 4635 0 R
+>>
+endobj
+4635 0 obj
+<<
+  /Title (Interrupt Request \(IRQn\) Reset)
+  /Parent 4633 0 R
+  /Dest [ 844 0 R /XYZ null 520 null ]
+  /Next 4636 0 R
+  /Prev 4634 0 R
+>>
+endobj
+4636 0 obj
+<<
+  /Title (Interrupt-Sharing Software Requirements)
+  /Parent 4633 0 R
+  /Dest [ 844 0 R /XYZ null 335 null ]
+  /Next 4637 0 R
+  /Prev 4635 0 R
+>>
+endobj
+4637 0 obj
+<<
+  /Title (Interrupt-Sharing Chaining Structure and Signature)
+  /Parent 4633 0 R
+  /Dest [ 854 0 R /XYZ null 415 null ]
+  /Next 4638 0 R
+  /Prev 4636 0 R
+>>
+endobj
+4638 0 obj
+<<
+  /Title (ROM Considerations)
+  /Parent 4633 0 R
+  /Dest [ 859 0 R /XYZ null 500 null ]
+  /Next 4639 0 R
+  /Prev 4637 0 R
+>>
+endobj
+4639 0 obj
+<<
+  /Title (Implementation Information)
+  /Parent 4633 0 R
+  /Dest [ 859 0 R /XYZ null 335 null ]
+  /Prev 4638 0 R
+>>
+endobj
+4640 0 obj
+<<
+  /Title (Adapter ROM)
+  /Parent 4632 0 R
+  /Dest [ 884 0 R /XYZ null 565 null ]
+  /Next 4641 0 R
+  /Prev 4633 0 R
+>>
+endobj
+4641 0 obj
+<<
+  /Title (Video Function Compatibility)
+  /Parent 4632 0 R
+  /Dest [ 894 0 R /XYZ null 565 null ]
+  /Count -2
+  /Next 4644 0 R
+  /Prev 4640 0 R
+  /First 4642 0 R
+  /Last 4643 0 R
+>>
+endobj
+4642 0 obj
+<<
+  /Title (Video Presence Test)
+  /Parent 4641 0 R
+  /Dest [ 894 0 R /XYZ null 490 null ]
+  /Next 4643 0 R
+>>
+endobj
+4643 0 obj
+<<
+  /Title (Video Mode Switching)
+  /Parent 4641 0 R
+  /Dest [ 899 0 R /XYZ null 570 null ]
+  /Prev 4642 0 R
+>>
+endobj
+4644 0 obj
+<<
+  /Title (Multitasking Provisions)
+  /Parent 4632 0 R
+  /Dest [ 904 0 R /XYZ null 565 null ]
+  /Next 4645 0 R
+  /Prev 4641 0 R
+>>
+endobj
+4645 0 obj
+<<
+  /Title (System Identification)
+  /Parent 4632 0 R
+  /Dest [ 914 0 R /XYZ null 570 null ]
+  /Next 4646 0 R
+  /Prev 4644 0 R
+>>
+endobj
+4646 0 obj
+<<
+  /Title (Application Guidelines)
+  /Parent 4632 0 R
+  /Dest [ 919 0 R /XYZ null 565 null ]
+  /Count -4
+  /Next 4651 0 R
+  /Prev 4645 0 R
+  /First 4647 0 R
+  /Last 4650 0 R
+>>
+endobj
+4647 0 obj
+<<
+  /Title (Math Coprocessor Testing)
+  /Parent 4646 0 R
+  /Dest [ 919 0 R /XYZ null 450 null ]
+  /Next 4648 0 R
+>>
+endobj
+4648 0 obj
+<<
+  /Title (Hardware Interrupts)
+  /Parent 4646 0 R
+  /Dest [ 919 0 R /XYZ null 385 null ]
+  /Next 4649 0 R
+  /Prev 4647 0 R
+>>
+endobj
+4649 0 obj
+<<
+  /Title (Programming Considerations)
+  /Parent 4646 0 R
+  /Dest [ 929 0 R /XYZ null 535 null ]
+  /Next 4650 0 R
+  /Prev 4648 0 R
+>>
+endobj
+4650 0 obj
+<<
+  /Title (BIOS and Operating System Function Calls)
+  /Parent 4646 0 R
+  /Dest [ 929 0 R /XYZ null 360 null ]
+  /Prev 4649 0 R
+>>
+endobj
+4651 0 obj
+<<
+  /Title (Scan Code/Character Code Combinations)
+  /Parent 4632 0 R
+  /Dest [ 944 0 R /XYZ null 570 null ]
+  /Prev 4646 0 R
+>>
+endobj
+4652 0 obj
+<<
+  /Title (Index)
+  /Parent 4483 0 R
+  /Dest [ 999 0 R /XYZ null 607 null ]
+  /Prev 4632 0 R
+>>
+endobj
+4653 0 obj
+<<
+  /Title (Advanced BIOS)
+  /Parent 4482 0 R
+  /Dest [ 1049 0 R /XYZ null 610 null ]
+  /Count -58
+  /Prev 4483 0 R
+  /First 4654 0 R
+  /Last 4746 0 R
+>>
+endobj
+4654 0 obj
+<<
+  /Title (Contents)
+  /Parent 4653 0 R
+  /Dest [ 1049 0 R /XYZ null 560 null ]
+  /Next 4655 0 R
+>>
+endobj
+4655 0 obj
+<<
+  /Title (Introduction to Advanced BIOS)
+  /Parent 4653 0 R
+  /Dest [ 1069 0 R /XYZ null 608 null ]
+  /Count 6
+  /Next 4662 0 R
+  /Prev 4654 0 R
+  /First 4656 0 R
+  /Last 4661 0 R
+>>
+endobj
+4656 0 obj
+<<
+  /Title (Introduction)
+  /Parent 4655 0 R
+  /Dest [ 1079 0 R /XYZ null 565 null ]
+  /Next 4657 0 R
+>>
+endobj
+4657 0 obj
+<<
+  /Title (Data Structures)
+  /Parent 4655 0 R
+  /Dest [ 1084 0 R /XYZ null 350 null ]
+  /Next 4658 0 R
+  /Prev 4656 0 R
+>>
+endobj
+4658 0 obj
+<<
+  /Title (Initialization)
+  /Parent 4655 0 R
+  /Dest [ 1089 0 R /XYZ null 470 null ]
+  /Next 4659 0 R
+  /Prev 4657 0 R
+>>
+endobj
+4659 0 obj
+<<
+  /Title (Transfer Conventions)
+  /Parent 4655 0 R
+  /Dest [ 1094 0 R /XYZ null 395 null ]
+  /Next 4660 0 R
+  /Prev 4658 0 R
+>>
+endobj
+4660 0 obj
+<<
+  /Title (Interrupt Processing)
+  /Parent 4655 0 R
+  /Dest [ 1099 0 R /XYZ null 220 null ]
+  /Next 4661 0 R
+  /Prev 4659 0 R
+>>
+endobj
+4661 0 obj
+<<
+  /Title (Extending ABIOS)
+  /Parent 4655 0 R
+  /Dest [ 1104 0 R /XYZ null 565 null ]
+  /Prev 4660 0 R
+>>
+endobj
+4662 0 obj
+<<
+  /Title (Data Structures)
+  /Parent 4653 0 R
+  /Dest [ 1109 0 R /XYZ null 608 null ]
+  /Count 4
+  /Next 4667 0 R
+  /Prev 4655 0 R
+  /First 4663 0 R
+  /Last 4666 0 R
+>>
+endobj
+4663 0 obj
+<<
+  /Title (Introduction)
+  /Parent 4662 0 R
+  /Dest [ 1119 0 R /XYZ null 560 null ]
+  /Next 4664 0 R
+>>
+endobj
+4664 0 obj
+<<
+  /Title (Common Data Area)
+  /Parent 4662 0 R
+  /Dest [ 1119 0 R /XYZ null 325 null ]
+  /Next 4665 0 R
+  /Prev 4663 0 R
+>>
+endobj
+4665 0 obj
+<<
+  /Title (Function Transfer Table)
+  /Parent 4662 0 R
+  /Dest [ 1139 0 R /XYZ null 560 null ]
+  /Next 4666 0 R
+  /Prev 4664 0 R
+>>
+endobj
+4666 0 obj
+<<
+  /Title (Device Block)
+  /Parent 4662 0 R
+  /Dest [ 1149 0 R /XYZ null 240 null ]
+  /Prev 4665 0 R
+>>
+endobj
+4667 0 obj
+<<
+  /Title (Initialization)
+  /Parent 4653 0 R
+  /Dest [ 1179 0 R /XYZ null 608 null ]
+  /Count 10
+  /Next 4678 0 R
+  /Prev 4662 0 R
+  /First 4668 0 R
+  /Last 4677 0 R
+>>
+endobj
+4668 0 obj
+<<
+  /Title (Introduction)
+  /Parent 4667 0 R
+  /Dest [ 1189 0 R /XYZ null 565 null ]
+  /Next 4669 0 R
+>>
+endobj
+4669 0 obj
+<<
+  /Title (Build System Parameters Table - Operating System)
+  /Parent 4667 0 R
+  /Dest [ 1194 0 R /XYZ null 570 null ]
+  /Next 4670 0 R
+  /Prev 4668 0 R
+>>
+endobj
+4670 0 obj
+<<
+  /Title (Build System Parameters Table - BIOS)
+  /Parent 4667 0 R
+  /Dest [ 1194 0 R /XYZ null 280 null ]
+  /Next 4671 0 R
+  /Prev 4669 0 R
+>>
+endobj
+4671 0 obj
+<<
+  /Title (Build Initialization Table - Operating System)
+  /Parent 4667 0 R
+  /Dest [ 1204 0 R /XYZ null 570 null ]
+  /Next 4672 0 R
+  /Prev 4670 0 R
+>>
+endobj
+4672 0 obj
+<<
+  /Title (Build Initialization Table - BIOS)
+  /Parent 4667 0 R
+  /Dest [ 1204 0 R /XYZ null 205 null ]
+  /Next 4673 0 R
+  /Prev 4671 0 R
+>>
+endobj
+4673 0 obj
+<<
+  /Title (Build Common Data Area - Operating System)
+  /Parent 4667 0 R
+  /Dest [ 1219 0 R /XYZ null 565 null ]
+  /Next 4674 0 R
+  /Prev 4672 0 R
+>>
+endobj
+4674 0 obj
+<<
+  /Title (Initialize Pointers - Operating System)
+  /Parent 4667 0 R
+  /Dest [ 1224 0 R /XYZ null 565 null ]
+  /Next 4675 0 R
+  /Prev 4673 0 R
+>>
+endobj
+4675 0 obj
+<<
+  /Title (Initialize Data Structures - ABIOS)
+  /Parent 4667 0 R
+  /Dest [ 1229 0 R /XYZ null 340 null ]
+  /Next 4676 0 R
+  /Prev 4674 0 R
+>>
+endobj
+4676 0 obj
+<<
+  /Title (Logical ID 2 Initialization)
+  /Parent 4667 0 R
+  /Dest [ 1239 0 R /XYZ null 565 null ]
+  /Next 4677 0 R
+  /Prev 4675 0 R
+>>
+endobj
+4677 0 obj
+<<
+  /Title (Build Protected Mode Tables)
+  /Parent 4667 0 R
+  /Dest [ 1244 0 R /XYZ null 565 null ]
+  /Prev 4676 0 R
+>>
+endobj
+4678 0 obj
+<<
+  /Title (Transfer Conventions)
+  /Parent 4653 0 R
+  /Dest [ 1259 0 R /XYZ null 608 null ]
+  /Count 4
+  /Next 4685 0 R
+  /Prev 4667 0 R
+  /First 4679 0 R
+  /Last 4684 0 R
+>>
+endobj
+4679 0 obj
+<<
+  /Title (Introduction)
+  /Parent 4678 0 R
+  /Dest [ 1269 0 R /XYZ null 565 null ]
+  /Next 4680 0 R
+>>
+endobj
+4680 0 obj
+<<
+  /Title (Request Block)
+  /Parent 4678 0 R
+  /Dest [ 1269 0 R /XYZ null 414 null ]
+  /Count -2
+  /Next 4683 0 R
+  /Prev 4679 0 R
+  /First 4681 0 R
+  /Last 4682 0 R
+>>
+endobj
+4681 0 obj
+<<
+  /Title (Functional Parameters)
+  /Parent 4680 0 R
+  /Dest [ 1279 0 R /XYZ null 570 null ]
+  /Next 4682 0 R
+>>
+endobj
+4682 0 obj
+<<
+  /Title (Service Specific Parameters)
+  /Parent 4680 0 R
+  /Dest [ 1279 0 R /XYZ null 445 null ]
+  /Prev 4681 0 R
+>>
+endobj
+4683 0 obj
+<<
+  /Title (ABIOS Transfer Convention)
+  /Parent 4678 0 R
+  /Dest [ 1324 0 R /XYZ null 570 null ]
+  /Next 4684 0 R
+  /Prev 4680 0 R
+>>
+endobj
+4684 0 obj
+<<
+  /Title (Operating System Transfer Convention)
+  /Parent 4678 0 R
+  /Dest [ 1334 0 R /XYZ null 490 null ]
+  /Prev 4683 0 R
+>>
+endobj
+4685 0 obj
+<<
+  /Title (Additional Information)
+  /Parent 4653 0 R
+  /Dest [ 1349 0 R /XYZ null 608 null ]
+  /Count 8
+  /Next 4701 0 R
+  /Prev 4678 0 R
+  /First 4686 0 R
+  /Last 4698 0 R
+>>
+endobj
+4686 0 obj
+<<
+  /Title (Interrupt Processing)
+  /Parent 4685 0 R
+  /Dest [ 1359 0 R /XYZ null 565 null ]
+  /Count 3
+  /Next 4690 0 R
+  /First 4687 0 R
+  /Last 4689 0 R
+>>
+endobj
+4687 0 obj
+<<
+  /Title (Interrupt Flow)
+  /Parent 4686 0 R
+  /Dest [ 1359 0 R /XYZ null 525 null ]
+  /Next 4688 0 R
+>>
+endobj
+4688 0 obj
+<<
+  /Title (Interrupt Sharing)
+  /Parent 4686 0 R
+  /Dest [ 1359 0 R /XYZ null 230 null ]
+  /Next 4689 0 R
+  /Prev 4687 0 R
+>>
+endobj
+4689 0 obj
+<<
+  /Title (Default Interrupt Handler)
+  /Parent 4686 0 R
+  /Dest [ 1369 0 R /XYZ null 130 null ]
+  /Prev 4688 0 R
+>>
+endobj
+4690 0 obj
+<<
+  /Title (Adding, Patching, Extending, and Replacing)
+  /Parent 4685 0 R
+  /Dest [ 1374 0 R /XYZ null 320 null ]
+  /Count -7
+  /Next 4698 0 R
+  /Prev 4686 0 R
+  /First 4691 0 R
+  /Last 4697 0 R
+>>
+endobj
+4691 0 obj
+<<
+  /Title (Adapter ROM Structure)
+  /Parent 4690 0 R
+  /Dest [ 1379 0 R /XYZ null 300 null ]
+  /Next 4692 0 R
+>>
+endobj
+4692 0 obj
+<<
+  /Title (RAM Extension Structure)
+  /Parent 4690 0 R
+  /Dest [ 1389 0 R /XYZ null 385 null ]
+  /Next 4693 0 R
+  /Prev 4691 0 R
+>>
+endobj
+4693 0 obj
+<<
+  /Title (Adding)
+  /Parent 4690 0 R
+  /Dest [ 1404 0 R /XYZ null 575 null ]
+  /Next 4694 0 R
+  /Prev 4692 0 R
+>>
+endobj
+4694 0 obj
+<<
+  /Title (Patching)
+  /Parent 4690 0 R
+  /Dest [ 1404 0 R /XYZ null 290 null ]
+  /Next 4695 0 R
+  /Prev 4693 0 R
+>>
+endobj
+4695 0 obj
+<<
+  /Title (Extending)
+  /Parent 4690 0 R
+  /Dest [ 1414 0 R /XYZ null 370 null ]
+  /Next 4696 0 R
+  /Prev 4694 0 R
+>>
+endobj
+4696 0 obj
+<<
+  /Title (Replacing)
+  /Parent 4690 0 R
+  /Dest [ 1424 0 R /XYZ null 325 null ]
+  /Next 4697 0 R
+  /Prev 4695 0 R
+>>
+endobj
+4697 0 obj
+<<
+  /Title (Considerations for RAM Extensions)
+  /Parent 4690 0 R
+  /Dest [ 1434 0 R /XYZ null 570 null ]
+  /Prev 4696 0 R
+>>
+endobj
+4698 0 obj
+<<
+  /Title (Operating Systems Implementation Considerations)
+  /Parent 4685 0 R
+  /Dest [ 1444 0 R /XYZ null 565 null ]
+  /Count 2
+  /Prev 4690 0 R
+  /First 4699 0 R
+  /Last 4700 0 R
+>>
+endobj
+4699 0 obj
+<<
+  /Title (ABIOS Rules)
+  /Parent 4698 0 R
+  /Dest [ 1444 0 R /XYZ null 515 null ]
+  /Next 4700 0 R
+>>
+endobj
+4700 0 obj
+<<
+  /Title (Considerations for Bimodal Implementations)
+  /Parent 4698 0 R
+  /Dest [ 1454 0 R /XYZ null 570 null ]
+  /Prev 4699 0 R
+>>
+endobj
+4701 0 obj
+<<
+  /Title (Interfaces)
+  /Parent 4653 0 R
+  /Dest [ 1479 0 R /XYZ null 608 null ]
+  /Count 16
+  /Next 4744 0 R
+  /Prev 4685 0 R
+  /First 4702 0 R
+  /Last 4742 0 R
+>>
+endobj
+4702 0 obj
+<<
+  /Title (Introduction)
+  /Parent 4701 0 R
+  /Dest [ 1489 0 R /XYZ null 570 null ]
+  /Next 4703 0 R
+>>
+endobj
+4703 0 obj
+<<
+  /Title (Diskette)
+  /Parent 4701 0 R
+  /Dest [ 1499 0 R /XYZ null 570 null ]
+  /Count -2
+  /Next 4706 0 R
+  /Prev 4702 0 R
+  /First 4704 0 R
+  /Last 4705 0 R
+>>
+endobj
+4704 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4703 0 R
+  /Dest [ 1564 0 R /XYZ null 575 null ]
+  /Next 4705 0 R
+>>
+endobj
+4705 0 obj
+<<
+  /Title (Programming Considerations)
+  /Parent 4703 0 R
+  /Dest [ 1564 0 R /XYZ null 225 null ]
+  /Prev 4704 0 R
+>>
+endobj
+4706 0 obj
+<<
+  /Title (Disk)
+  /Parent 4701 0 R
+  /Dest [ 1579 0 R /XYZ null 565 null ]
+  /Count -2
+  /Next 4709 0 R
+  /Prev 4703 0 R
+  /First 4707 0 R
+  /Last 4708 0 R
+>>
+endobj
+4707 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4706 0 R
+  /Dest [ 1619 0 R /XYZ null 575 null ]
+  /Next 4708 0 R
+>>
+endobj
+4708 0 obj
+<<
+  /Title (Programming Considerations)
+  /Parent 4706 0 R
+  /Dest [ 1629 0 R /XYZ null 570 null ]
+  /Prev 4707 0 R
+>>
+endobj
+4709 0 obj
+<<
+  /Title (Video)
+  /Parent 4701 0 R
+  /Dest [ 1639 0 R /XYZ null 565 null ]
+  /Count -2
+  /Next 4712 0 R
+  /Prev 4706 0 R
+  /First 4710 0 R
+  /Last 4711 0 R
+>>
+endobj
+4710 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4709 0 R
+  /Dest [ 1714 0 R /XYZ null 575 null ]
+  /Next 4711 0 R
+>>
+endobj
+4711 0 obj
+<<
+  /Title (Video Modes)
+  /Parent 4709 0 R
+  /Dest [ 1714 0 R /XYZ null 430 null ]
+  /Prev 4710 0 R
+>>
+endobj
+4712 0 obj
+<<
+  /Title (Keyboard)
+  /Parent 4701 0 R
+  /Dest [ 1719 0 R /XYZ null 570 null ]
+  /Count -2
+  /Next 4715 0 R
+  /Prev 4709 0 R
+  /First 4713 0 R
+  /Last 4714 0 R
+>>
+endobj
+4713 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4712 0 R
+  /Dest [ 1764 0 R /XYZ null 575 null ]
+  /Next 4714 0 R
+>>
+endobj
+4714 0 obj
+<<
+  /Title (Programming Considerations)
+  /Parent 4712 0 R
+  /Dest [ 1764 0 R /XYZ null 205 null ]
+  /Prev 4713 0 R
+>>
+endobj
+4715 0 obj
+<<
+  /Title (Parallel Port)
+  /Parent 4701 0 R
+  /Dest [ 1779 0 R /XYZ null 560 null ]
+  /Count -2
+  /Next 4718 0 R
+  /Prev 4712 0 R
+  /First 4716 0 R
+  /Last 4717 0 R
+>>
+endobj
+4716 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4715 0 R
+  /Dest [ 1804 0 R /XYZ null 295 null ]
+  /Next 4717 0 R
+>>
+endobj
+4717 0 obj
+<<
+  /Title (Programming Considerations)
+  /Parent 4715 0 R
+  /Dest [ 1809 0 R /XYZ null 575 null ]
+  /Prev 4716 0 R
+>>
+endobj
+4718 0 obj
+<<
+  /Title (Asynchronous Communications)
+  /Parent 4701 0 R
+  /Dest [ 1819 0 R /XYZ null 565 null ]
+  /Count -2
+  /Next 4721 0 R
+  /Prev 4715 0 R
+  /First 4719 0 R
+  /Last 4720 0 R
+>>
+endobj
+4719 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4718 0 R
+  /Dest [ 1929 0 R /XYZ null 385 null ]
+  /Next 4720 0 R
+>>
+endobj
+4720 0 obj
+<<
+  /Title (Programming Considerations)
+  /Parent 4718 0 R
+  /Dest [ 1929 0 R /XYZ null 190 null ]
+  /Prev 4719 0 R
+>>
+endobj
+4721 0 obj
+<<
+  /Title (System Timer)
+  /Parent 4701 0 R
+  /Dest [ 1959 0 R /XYZ null 565 null ]
+  /Count -2
+  /Next 4724 0 R
+  /Prev 4718 0 R
+  /First 4722 0 R
+  /Last 4723 0 R
+>>
+endobj
+4722 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4721 0 R
+  /Dest [ 1964 0 R /XYZ null 575 null ]
+  /Next 4723 0 R
+>>
+endobj
+4723 0 obj
+<<
+  /Title (Programming Considerations)
+  /Parent 4721 0 R
+  /Dest [ 1964 0 R /XYZ null 420 null ]
+  /Prev 4722 0 R
+>>
+endobj
+4724 0 obj
+<<
+  /Title (Real-Time Clock)
+  /Parent 4701 0 R
+  /Dest [ 1969 0 R /XYZ null 565 null ]
+  /Count -2
+  /Next 4727 0 R
+  /Prev 4721 0 R
+  /First 4725 0 R
+  /Last 4726 0 R
+>>
+endobj
+4725 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4724 0 R
+  /Dest [ 2009 0 R /XYZ null 315 null ]
+  /Next 4726 0 R
+>>
+endobj
+4726 0 obj
+<<
+  /Title (Programming Considerations)
+  /Parent 4724 0 R
+  /Dest [ 2009 0 R /XYZ null 135 null ]
+  /Prev 4725 0 R
+>>
+endobj
+4727 0 obj
+<<
+  /Title (System Services)
+  /Parent 4701 0 R
+  /Dest [ 2019 0 R /XYZ null 565 null ]
+  /Count -1
+  /Next 4729 0 R
+  /Prev 4724 0 R
+  /First 4728 0 R
+  /Last 4728 0 R
+>>
+endobj
+4728 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4727 0 R
+  /Dest [ 2034 0 R /XYZ null 290 null ]
+>>
+endobj
+4729 0 obj
+<<
+  /Title (Nonmaskable Interrupt \(NMI\))
+  /Parent 4701 0 R
+  /Dest [ 2039 0 R /XYZ null 570 null ]
+  /Count -1
+  /Next 4731 0 R
+  /Prev 4727 0 R
+  /First 4730 0 R
+  /Last 4730 0 R
+>>
+endobj
+4730 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4729 0 R
+  /Dest [ 2049 0 R /XYZ null 360 null ]
+>>
+endobj
+4731 0 obj
+<<
+  /Title (Pointing Device)
+  /Parent 4701 0 R
+  /Dest [ 2059 0 R /XYZ null 565 null ]
+  /Count -2
+  /Next 4734 0 R
+  /Prev 4729 0 R
+  /First 4732 0 R
+  /Last 4733 0 R
+>>
+endobj
+4732 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4731 0 R
+  /Dest [ 2089 0 R /XYZ null 575 null ]
+  /Next 4733 0 R
+>>
+endobj
+4733 0 obj
+<<
+  /Title (Programming Considerations)
+  /Parent 4731 0 R
+  /Dest [ 2094 0 R /XYZ null 575 null ]
+  /Prev 4732 0 R
+>>
+endobj
+4734 0 obj
+<<
+  /Title (Nonvolatile Random Access Memory \(NVRAM\))
+  /Parent 4701 0 R
+  /Dest [ 2099 0 R /XYZ null 565 null ]
+  /Count -2
+  /Next 4737 0 R
+  /Prev 4731 0 R
+  /First 4735 0 R
+  /Last 4736 0 R
+>>
+endobj
+4735 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4734 0 R
+  /Dest [ 2114 0 R /XYZ null 300 null ]
+  /Next 4736 0 R
+>>
+endobj
+4736 0 obj
+<<
+  /Title (Programming Considerations)
+  /Parent 4734 0 R
+  /Dest [ 2114 0 R /XYZ null 135 null ]
+  /Prev 4735 0 R
+>>
+endobj
+4737 0 obj
+<<
+  /Title (Direct Memory Access \(DMA\))
+  /Parent 4701 0 R
+  /Dest [ 2119 0 R /XYZ null 565 null ]
+  /Count -2
+  /Next 4740 0 R
+  /Prev 4734 0 R
+  /First 4738 0 R
+  /Last 4739 0 R
+>>
+endobj
+4738 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4737 0 R
+  /Dest [ 2154 0 R /XYZ null 570 null ]
+  /Next 4739 0 R
+>>
+endobj
+4739 0 obj
+<<
+  /Title (Programming Considerations)
+  /Parent 4737 0 R
+  /Dest [ 2154 0 R /XYZ null 350 null ]
+  /Prev 4738 0 R
+>>
+endobj
+4740 0 obj
+<<
+  /Title (Programmable Option Select \(POS\))
+  /Parent 4701 0 R
+  /Dest [ 2169 0 R /XYZ null 565 null ]
+  /Count -1
+  /Next 4742 0 R
+  /Prev 4737 0 R
+  /First 4741 0 R
+  /Last 4741 0 R
+>>
+endobj
+4741 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4740 0 R
+  /Dest [ 2194 0 R /XYZ null 575 null ]
+>>
+endobj
+4742 0 obj
+<<
+  /Title (Keyboard Security)
+  /Parent 4701 0 R
+  /Dest [ 2199 0 R /XYZ null 565 null ]
+  /Count -1
+  /Prev 4740 0 R
+  /First 4743 0 R
+  /Last 4743 0 R
+>>
+endobj
+4743 0 obj
+<<
+  /Title (Return Codes)
+  /Parent 4742 0 R
+  /Dest [ 2224 0 R /XYZ null 575 null ]
+>>
+endobj
+4744 0 obj
+<<
+  /Title (Index)
+  /Parent 4653 0 R
+  /Dest [ 2229 0 R /XYZ null 610 null ]
+  /Next 4745 0 R
+  /Prev 4701 0 R
+>>
+endobj
+4745 0 obj
+<<
+  /Title (Asynchronous Communications Supplement)
+  /Parent 4653 0 R
+  /Dest [ 2309 0 R /XYZ null 455 null ]
+  /Next 4746 0 R
+  /Prev 4744 0 R
+>>
+endobj
+4746 0 obj
+<<
+  /Title (Programmable Option Select Supplement)
+  /Parent 4653 0 R
+  /Dest [ 2319 0 R /XYZ null 440 null ]
+  /Prev 4745 0 R
+>>
+endobj
+4747 0 obj
+<<
+  /Type /XRef
+  /Size 4748
+  /Root 4479 0 R
+  /Info 4480 0 R
+  /Index [ 4479 269 ]
+  /W [ 1 4 1 ]
+  /Length 1614
+  /Prev 10940219
+>>
+stream
+ §Ò  §£  §	u  §  §o  §  §‰  §B  §­  §q  §ë  §t  §  §œ  §3  §®  §i  §ô  §›  §1  §Ç  §Y  §  §š  §4  §Ò  §q  §  §¸  §X  §ú  §®  §c  §  §´  §H  §Û  §ƒ  § &  § Æ  §!d  §!ÿ  §"–  §#8  §#ø  §$¦  §%W  §%é  §&Š  §'-  §'ï  §(}  §)%  §)Ð  §*|  §+  §+¼  §,\  §,õ  §-›  §.>  §.Ñ  §/•  §0   §0È  §1s  §2  §2À  §3b  §4  §4Ñ  §5q  §6!  §6°  §7O  §7ê  §8€  §9  §9®  §:3  §;  §;£  §<<  §<Ø  §=n  §>  §>ª  §?s  §@  §@¥  §AI  §Aì  §B•  §C<  §CÛ  §D}  §E   §E½  §Fp  §G  §G£  §H:  §HØ  §Im  §J  §J­  §K<  §KÑ  §Lz  §M'  §M½  §NZ  §O  §OÄ  §Pm  §Q  §Q¬  §Rn  §Rõ  §S  §T'  §TÄ  §Uh  §V  §V°  §WQ  §Wõ  §X„  §YD  §YÍ  §Zs  §Zø  §[’  §\u  §]  §]µ  §^Y  §^ü  §_   §`C  §`ç  §a  §bC  §bø  §c   §dG  §dÙ  §ek  §f5  §f²  §gI  §gð  §h  §i  §iÐ  §j  §jù  §k™  §l@  §lò  §m„  §n  §n˜  §oc  §oå  §ph  §pÿ  §q”  §rY  §rà  §ss  §t  §t¤  §u8  §u¬  §vY  §vÑ  §w  §x  §x©  §y8  §yÍ  §zb  §zá  §{Ÿ  §|  §|¬  §}D  §}À  §~~  §~ú  §«  §€P  §€þ  §   §‚J  §‚ñ  §ƒ”  §„0  §„»  §…~  §…ú  §†·  §‡<  §‡Ç  §ˆa  §ˆõ  §‰º  §Šl  §Šê  §‹|  §Œ  §Œß  §d  §ü  §Žƒ  §  §–  §   §±  §‘~  §‘ù  §’“  §“M  §“É  §”  §”ý  §•‡  §–;  §–·  §—A  §—ö  §˜r  §˜í  §™¥  §š!  §š«  §›h  §›ä  §œn  §9  §µ  §ž?  §žû  §Ÿw  §   § À  §¡<  §¡Æ  §¢…  §¢ð  §£½  §¤(  §¤ç  §¥c  §¥í  §¦Ç  §§C  §§Í  §¨™  §©  §©Ÿ  §ªq  §ªÜ  §«Œ  §«÷  §¬}  §­$  §­¹ 
+endstream
+endobj
+startxref
+10988985
+%%EOF

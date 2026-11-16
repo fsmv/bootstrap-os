@@ -1,0 +1,384 @@
+#!/usr/bin/env bash
+
+# This script creates a trailer file you can concatenate with the source PDF to
+# add a table of contents to the PDF, as well as a title and page labels.
+# It does this using the incremental updates feature described in section 7.5.6
+# of the PDF spec.
+
+# Targets bash 3.2 for MacOS compatibility
+# You will need to install qpdf and jq for this script to work
+
+# The PDF spec is available for free at https://pdfa.org/resource/iso-32000-2/
+
+export LC_ALL=C # for ${#obj} to count bytes and for awk parsing the PDF
+if [ $# -ne 2 ]; then
+  echo "Usage: $0 [original pdf] [bookmarks data file]" >&2
+  exit 1
+fi
+
+# We're parsing several fields out of the trailer dictionary. This is described
+# in section 7.5.5.
+TRAILER_JSON=$(qpdf --json --json-key=qpdf --json-object=trailer "$1")
+FILESIZE=$(( $(wc -c < "$1") ))
+PREV_TRAILER=$(tail -c 1024 "$1" | tr -s '\r\n' '\n' | awk 'found {print $0; exit} $0 == "startxref" {found=1}')
+
+# Encrypted PDFs don't work because it would be necessary to do some extra work
+# to make a valid PDF around an encrypted one.
+ENCRYPTED=$(jq -r '.qpdf[1].trailer.value."/Encrypt"' <<< "$TRAILER_JSON")
+if [ "$ENCRYPTED" != "null" ]; then
+  echo "The file $1 is encrypted. This script only works on unencrypted PDFs." >&2
+  exit 1
+fi
+
+# Get the original root dict so we can add to it
+OLDROOT=$(jq -r '.qpdf[1].trailer.value."/Root"' <<< "$TRAILER_JSON" | cut -d' ' -f 1)
+ROOT_DICT=$(qpdf --show-object="$OLDROOT" "$1")
+ROOT_DICT=${ROOT_DICT%%>>}
+ROOT_DICT=${ROOT_DICT/\/UseNone/\/UseOutlines}
+
+# Get the original info dict (which is optional) so we can add to it
+OLDINFO=$(jq -r '.qpdf[1].trailer.value."/Info"' <<< "$TRAILER_JSON" | cut -d' ' -f 1)
+if [ "$OLDINFO" = "null" ]; then
+  INFO_DICT="<<
+"
+else
+  INFO_DICT=$(qpdf --show-object="$OLDINFO" "$1")
+  INFO_DICT=${INFO_DICT%%>>}
+fi
+
+# In PDF 1.5 they allowed a new xref format (xref is byte offsets to each
+# object) and if a document uses the new type it's required to match it with the
+# incremental update. This Type property is required for xref objects and is
+# described in section 7.5.8.2.
+XREF_TYPE=$(jq -r '.qpdf[1].trailer.value."/Type"' <<< "$TRAILER_JSON")
+
+# TODO: it would be nice to be extra and put in a new /ID value if there was one
+# I think we're supposed to take the first of the two values and keep it then
+# make a new hash for the second value. See Chapter 14.4 of the PDF spec.
+
+# An array mapping page number to page object number (for outline references)
+page_objects=()
+while read -r line; do
+  page_objects+=("$line")
+done < <(qpdf --show-pages "$1" | grep "^p" | awk '{print $3}')
+
+# Find the next object number to use and allocate some objects
+OBJ=$(jq '.qpdf[1].trailer.value."/Size"' <<< "$TRAILER_JSON")
+ROOT=$((OBJ++))
+INFO=$((OBJ++))
+LABELS=$((OBJ++))
+OUTLINES=$((OBJ++))
+
+# PDF string values go in parens so they need to be escaped
+ESCAPED=""
+escape_pdf_string() {
+  ESCAPED=$1
+  ESCAPED=${ESCAPED//\\/\\\\} # \ -> \\
+  ESCAPED=${ESCAPED//\(/\\(} # ( -> \(
+  ESCAPED=${ESCAPED//\)/\\)} # ) -> \)
+}
+
+# Append to the lists below and keep track of the offset.
+offsets=() # add_obj tracks all the object offsets here
+objects=() # add_obj adds all the added object strings here
+OFFSET=$((FILESIZE+1)) # The current offset for new objects in the file. +1 to skip the \n at the start of every object string
+add_obj() {
+  local obj=$1
+  objects+=("$obj")
+  offsets+=("$OFFSET")
+  local SIZE=${#obj}
+  OFFSET=$((OFFSET+SIZE))
+}
+
+# We're replacing the old /Root object with this new one. Keep the parameters
+# from the old one and add some new ones.
+# The possible entries in the dictionary for this object are in section 7.7.2
+# Also objects are described in section 7.3
+add_obj "
+$ROOT 0 obj
+$ROOT_DICT
+  /Outlines $OUTLINES 0 R
+  /PageLabels $LABELS 0 R
+>>
+endobj"
+
+# Extract the chapter prefixes and titles from the data file separately from the
+# outline objects (which are the most complicated part)
+TITLE=""
+chapters=()
+while IFS=',' read page level ypos open title chapter; do
+  if [ -z "$page" ] || [ "$page" = "page" ]; then
+    continue
+  fi
+  if [ -z "$level" ] && [ -n "$title" ]; then
+    escape_pdf_string "$title"
+    TITLE=$ESCAPED
+    continue
+  fi
+  if [ -z "$chapter" ]; then
+    continue
+  fi
+  # Pages are zero indexed here.
+  # See section 12.4.2 table 161 for the options
+  if [ "$chapter" = "cover" ]; then
+    chapters+=("$((page-1)) << /P (Cover) >>")
+  elif [ "$chapter" = "roman" ]; then
+    chapters+=("$((page-1)) << /S /r >>")
+  else
+    escape_pdf_string "$chapter"
+    chapters+=("$((page-1)) << /P ($ESCAPED) /S /D >>")
+  fi
+done < "$2"
+
+# Also replace the /Info object and add a new field like the /Root object.
+# Fields are described in section 14.3.3
+add_obj "
+$INFO 0 obj
+$INFO_DICT
+  /Title ($TITLE)
+>>
+endobj"
+
+# This is the /PageLabels object pointed to in the /Root dictionary.
+# It sets the custom names for the pages like 1-10 or roman numerals (those
+# strings are generated in the function above).
+# Described in section 12.4.2
+LABELS_OBJ="
+$LABELS 0 obj
+<<
+/Nums [
+"
+for chapter in "${chapters[@]}"; do
+  LABELS_OBJ+="  $chapter
+"
+done
+LABELS_OBJ+="]
+>>
+endobj"
+add_obj "$LABELS_OBJ"
+
+# Preprocess the bookmarks data file to calculate the count values, and the
+# index of the last immediate child element for each outline item according to
+# the PDF rules. That is, count the number of visible items under each parent,
+# respecting the open/closed (UI tree collapse) state.
+#
+# See section 12.3.3 table 151 in the Count field notes. There's an algorithm
+# describing what the counts should be. Also in Annex H.6 there are examples of
+# PDF outlines showing count values. /Last is also described in the same table
+# which corresponds to last_child.
+#
+# The both arrays are left sparse, the missing values are zeros for counts and
+# null for last_child.
+counts=() # /Counts in the PDF for each outlines item (0 being the $OUTLINES element)
+last_child=() # /Last in the PDF for each outlines item
+# temporary loop vars below
+open_at_level=('+') # temporary stack for whether the current bookmark at each level is open or closed
+last_at_level=(0) # temporary stack for the index (in counts) of the parent item at each level aka the last seen index in each level
+last_level=0
+# If we went down in level, every level number in the gap we jumped down needs
+# an updated last_child. This is to handle ex: going from level 3 back to 1.
+update_last_child() {
+  local level=$1
+  if (( level < last_level )); then
+    for (( l=last_level; l>level; l-- )); do
+      parent_idx=${last_at_level[l-1]}
+      last_child[parent_idx]=$((last_at_level[l] - 1)) # -1 because we want actual object number not index (start at 0 not 1)
+    done
+  fi
+}
+i=1 # outlines item id (almost line number) and index into counts and last_child. Element 0 is reserved for $OUTLINES.
+while IFS=',' read page level ypos open title chapter; do
+  if [ -z "$page" ] || [ "$page" = "page" ] || [ -z "$level" ]; then
+    continue
+  fi
+  ((level++)) # level 0 is reserved for $OUTLINES so that level 0 in the file (now 1) can look up a parent index
+  update_last_child $level
+  last_level=$level
+  last_at_level[level]=$i
+  open_at_level[level]=$open
+  for (( l=level-1; l>=0; l-- )); do
+    ((counts[last_at_level[l]] += 1))
+    if [ "${open_at_level[$l]}" = "-" ]; then
+      break
+    fi
+  done
+  ((i++))
+done < "$2"
+update_last_child 0
+
+FIRST_ITEM=$OBJ # First outline item object number
+
+# The /Outlines object pointed at by /Root. It is also the parent item of the
+# first level of outline items.
+# Described in section 12.3.3 table 150
+add_obj "
+$OUTLINES 0 obj
+<<
+  /Type /Outlines
+  /Count ${counts[0]}
+  /First $FIRST_ITEM 0 R
+  /Last $((FIRST_ITEM + last_child[0])) 0 R
+>>
+endobj"
+
+# Calculates the /Next outline item for a given item index i.
+# Returns in CALC_NEXT_RET.
+#
+# The /Next for an outline item is either the next consecutive element (relying
+# on consecutive object IDs) or if the element has children it is the next
+# consecutive element after the last child object with no children. Ex:
+#
+# level 1  <- $1
+#   level 2
+#   level 2 <- /Last of $1
+#    level 3
+#    level 3 <- /Last of (/Last of $1)
+# level 1 <- Correct return value
+CALC_NEXT_RET=0
+calculate_next() {
+  local i=$1
+  if (( counts[i] > 0 )); then
+    local my_last=$((last_child[i] + 1))
+    if (( counts[my_last] > 0 )); then # +1 for using it as an index
+      calculate_next $my_last # +1 for using it as an index
+      return
+    fi
+    CALC_NEXT_RET=$my_last # +1 for the next object like i+1 below
+  else
+    CALC_NEXT_RET=$i # i is an index which is 1-indexed and the objects are 0 indexed so this is the next line
+  fi
+}
+
+# Now actually create the Outline item objects.
+# Described in section 12.3.3 table 151.
+PREFIX="
+  "
+i=1
+last_at_level=(0)
+prev_at_level=()
+while IFS=',' read page level ypos open title chapter; do
+  if [ -z "$page" ] || [ "$page" = "page" ] || [ -z "$level" ]; then
+    continue
+  fi
+  ((level++)) # level 0 is reserved for $OUTLINES so that level 0 in the file (now 1) can look up a parent index
+  last_at_level[level]=$i
+  parent_idx=${last_at_level[level-1]}
+
+  parent=$OUTLINES # level 1's (0 in the file) parent is $OUTLINES
+  if (( level > 1 )); then
+    parent=$((FIRST_ITEM + parent_idx - 1)) # -1 to be an object number not an index (start at 0 not 1)
+  fi
+  count="" first="" last="" next="" prev=""
+  if (( counts[i] > 0 )); then
+    if [ "$open" = "+" ]; then
+      count="$PREFIX/Count ${counts[i]}"
+    else
+      count="$PREFIX/Count -${counts[i]}"
+    fi
+    first="$PREFIX/First $((FIRST_ITEM + i)) 0 R" # i is an index which is 1-indexed so i is the object number of the next line
+  fi
+  if (( last_child[i] )); then
+    last="$PREFIX/Last $((FIRST_ITEM + last_child[i])) 0 R"
+  fi
+  if (( last_child[parent_idx] != i-1 )); then
+    calculate_next $i
+    next="$PREFIX/Next $((FIRST_ITEM + CALC_NEXT_RET)) 0 R"
+  fi
+  if (( prev_at_level[level] != 0 )); then
+    prev="$PREFIX/Prev ${prev_at_level[level]} 0 R"
+  fi
+  escape_pdf_string "$title"
+  add_obj "
+$((OBJ++)) 0 obj
+<<
+  /Title ($ESCAPED)
+  /Parent $parent 0 R
+  /Dest [ $((page_objects[page-1])) 0 R /XYZ null $ypos null ]$count$next$prev$first$last
+>>
+endobj"
+
+  prev_at_level[level]=$((OBJ-1)) # The last object added is now the prev
+  # Clear prev_at_level for every level above the current (and handle sparse arrays)
+  indices=("${!prev_at_level[@]}")
+  last_idx=${indices[${#indices[@]}-1]}
+  for (( l=last_idx; l>level; l-- )); do
+    prev_at_level[l]=0
+  done
+  ((i++))
+done < "$2"
+
+# The pre-1.5 format.
+# Described in section 7.5.4
+print_old_xref() {
+  printf '\nxref\n%d %d\n' $ROOT ${#objects[@]}
+  for offs in "${offsets[@]}"; do
+    printf '%010d 00000 n \n' "$offs"
+  done
+  printf '%s\n' "trailer
+<<
+  /Size $OBJ
+  /Root $ROOT 0 R
+  /Info $INFO 0 R
+  /Prev $PREV_TRAILER
+>>
+startxref
+$OFFSET
+%%EOF"
+}
+
+# Print to stdout a 32 bit integer in $1 as 4 binary bytes.
+print32() {
+  local int=$1
+  for (( byte=3; byte>=0; byte-- )); do
+    local escape
+    printf -v escape '\\x%02x' $(( (int >> byte*8) & 0xFF ))
+    printf '%b' "$escape"
+  done
+}
+
+# The post-1.5 format. Don't bother to do any compression to keep it simple.
+# Described in section 7.5.8
+print_new_xref() {
+  local XREF=$((OBJ++))
+  offsets+=("$OFFSET")
+  # Dictionary described in section 7.5.8.2
+  printf '%s\n' "
+$XREF 0 obj
+<<
+  /Type /XRef
+  /Size $OBJ
+  /Root $ROOT 0 R
+  /Info $INFO 0 R
+  /Index [ $ROOT ${#offsets[@]} ]
+  /W [ 1 4 1 ]
+  /Length $((${#offsets[@]} * 6))
+  /Prev $PREV_TRAILER
+>>
+stream"
+
+  # Object streams generally are documented in section 7.3.8
+  for offs in "${offsets[@]}"; do
+    printf '%b' '\x01' # Type 1
+    print32 "$offs"    # Object offset
+    printf '%b' '\x00' # Generation number
+  done
+
+  printf '%s\n' "
+endstream
+endobj
+startxref
+$OFFSET
+%%EOF"
+}
+
+{
+  #cat "$1"
+  for obj in "${objects[@]}"; do
+    printf '%s' "$obj"
+  done
+  if [ "$XREF_TYPE" = "/XRef" ]; then
+    print_new_xref
+  else
+    print_old_xref
+  fi
+} #> out.pdf
